@@ -1,0 +1,77 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use v5.10.0;
+
+use open IO => ':locale';
+use Encode qw(decode);
+use Encode::Locale;
+
+@ARGV = map { decode('locale', $_, 1) } @ARGV;
+
+use Getopt::Long;
+
+use FindBin;
+use lib "${FindBin::Bin}/../lib";
+
+use Unicoder;
+
+our $dry_run = 0;
+our $verbose = 0;
+our $dumper = 0;
+
+sub usage { print <<END; }
+usage:
+    $0 [<option> ...] <command> [<arguments> ...]
+commands:
+    $0 list-blocks
+    $0 list-scripts
+    $0 charinfo '<char>'
+    $0 charinfo U+<hex>
+    $0 charinfo <decimal>               use 00 .. 09 for U+0000 .. U+0009
+    $0 charinfo '<charname>'
+    $0 search <keyword> ...             can use -<keyword> or +<keyword>
+    $0 help
+options:
+    --dumper
+END
+
+my $p = Getopt::Long::Parser->new();
+$p->configure('gnu_compat', 'bundling');
+$p->getoptionsfromarray(
+    \@ARGV,
+    'h|help' => sub {
+        usage;
+        exit 0;
+    },
+    'dumper' => \$dumper,
+    'v|verbose+' => \$verbose,
+    'n|dry-run' => \$dry_run,
+) or die("Type '$0 --help' for help.\n");
+
+my ($command, @arguments) = @ARGV;
+if (!defined $command) {
+    die("No command specified.\n");
+}
+
+my $unicoder = Unicoder->new();
+$unicoder->dumper($dumper);
+
+if ($command =~ m{^(list-?)?blocks$}i) {
+    $unicoder->listBlocks();
+} elsif ($command =~ m{^(list-?)?scripts$}i) {
+    $unicoder->listScripts();
+} elsif ($command =~ m{^char(acter)?(-?info)?$}i) {
+    foreach my $argument (@arguments) {
+        $unicoder->charInfo($argument);
+    }
+} elsif ($command =~ m{^search$}i) {
+    $unicoder->search(@arguments);
+} elsif ($command =~ m{^help$}i) {
+    usage();
+    exit(0);
+} elsif ($command =~ m{^block$}i) {
+    $unicoder->listBlock(@arguments);
+} else {
+    die("No such command: $command\n");
+}
