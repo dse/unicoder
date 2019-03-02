@@ -3,7 +3,7 @@ use warnings;
 use strict;
 use v5.10.0;
 
-use Unicode::UCD qw(charblocks charscripts charinfo);
+use Unicode::UCD qw(charblocks charscripts charinfo charblock);
 use charnames qw();
 use Encode::Unicode qw();
 use Data::Dumper qw(Dumper);
@@ -22,6 +22,31 @@ has 'charBlockNames'  => (is => 'rw');
 has 'charScriptNames' => (is => 'rw');
 has 'charBlockArray'  => (is => 'rw');
 has 'charScriptArray' => (is => 'rw');
+has 'noSearch' => (
+    is => 'rw', default => sub {
+        return {
+            'Low Surrogates'                     => 1,
+            'High Surrogates'                    => 1,
+            'High Private Use Surrogates'        => 1,
+            'Private Use Area'                   => 1,
+            'Supplementary Private Use Area-A'   => 1,
+            'Supplementary Private Use Area-B'   => 1,
+            'CJK Unified Ideographs'             => 1,
+            'CJK Unified Ideographs Extension B' => 1,
+            'CJK Unified Ideographs Extension C' => 1,
+            'CJK Unified Ideographs Extension D' => 1,
+            'CJK Unified Ideographs Extension E' => 1,
+            'CJK Unified Ideographs Extension F' => 1,
+            'Tangut'                             => 1,
+            'Tangut Components'                  => 1,
+        };
+    }
+);
+has clearToEOL => (
+    is => 'rw', lazy => 1, default => sub {
+        return `tput el`;
+    }
+);
 
 sub charBlock {
     my ($self, $blockName) = @_;
@@ -103,24 +128,21 @@ sub search {
       subblock:
         foreach my $subblock (@$block) {
             my ($low, $high, $subblockname) = @$subblock;
-            next subblock if $subblockname eq 'High Surrogates';
-            next subblock if $subblockname eq 'High Private Use Surrogates';
-            next subblock if $subblockname eq 'Low Surrogates';
-            next subblock if $subblockname eq 'Private Use Area';
-            next subblock if $subblockname eq 'Supplementary Private Use Area-A';
-            next subblock if $subblockname eq 'Supplementary Private Use Area-B';
+            next subblock if $self->noSearch->{$subblockname};
           codepoint:
             foreach my $codepoint ($low .. $high) {
                 if (-t 2) {
-                    printf STDERR ("    %s\r", uplus($codepoint)) if $codepoint % 0x100 == 0 || $codepoint eq $low;
+                    printf STDERR ("    %s %s%s\r", uplus($codepoint), $subblockname, $self->clearToEOL) if $codepoint % 0x100 == 0 || $codepoint eq $low;
                 }
-                my $charname = charnames::viacode($codepoint);
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
                 next codepoint if !defined $charname;
                 my $codepointMatches = 0;
                 my $weight = 0;
                 foreach my $search (@searches) {
                     my ($rx, $number) = @$search;
-                    my $keywordMatches = $charname =~ $rx;
+                    my $keywordMatches = (defined $charname && $charname =~ $rx) || (defined $charname10 && $charname10 =~ $rx);
                     if ($number == -1) { # negated
                         next codepoint if $keywordMatches;
                     } elsif ($number == 1) { # required
@@ -139,12 +161,7 @@ sub search {
         }
     }
     if (-t 2) {
-        my $ce = `tput ce`;
-        if (defined $ce) {
-            print STDERR $ce;
-        } else {
-            print STDERR ("Done searching.                \n");
-        }
+        printf STDERR ("Done searching.%s\n", $self->clearToEOL);
     }
 
     @results = sort {
@@ -160,12 +177,29 @@ sub search {
 
 sub printCharacterLine {
     my ($self, $codepoint, $weight) = @_;
-    my $charname = charnames::viacode($codepoint);
+    my $charinfo = charinfo($codepoint);
+    my $charname = $charinfo->{name};
+    my $charname10 = $charinfo->{unicode10};
+
+    my $displayName = join(' ', grep { defined $_ } (
+        $charname,
+        (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
+    ));
+
+    my $uplus = uplus($codepoint);
+    my $char = chr($codepoint);
+    if (defined $charname && $charname eq '<control>') {
+        $char = '???';
+    } elsif ($codepoint == 127) {
+        $char = '???';
+    } elsif ($codepoint >= 0 && $codepoint <= 31) {
+        $char = '???';
+    } elsif ($codepoint >= 128 && $codepoint <= 159) {
+        $char = '???';
+    }
+
     if (defined $charname) {
-        printf("%8s\t%s\t%s\n",
-               uplus($codepoint),
-               chr($codepoint),
-               $charname);
+        printf("%8s\t%s\t%s\n", $uplus, $char, $displayName);
     }
 }
 
@@ -235,6 +269,16 @@ sub listBlock {
     my ($self, @blocknames) = @_;
     foreach my $blockname (@blocknames) {
         my $block = $self->charBlock($blockname);
+        if (!defined $block) {
+            my $codepoint = $self->codepoint($blockname);
+            if (defined $codepoint) {
+                my $charblock = charblock($codepoint);
+                if (defined $charblock) {
+                    $blockname = $charblock;
+                    $block = $self->charBlock($blockname);
+                }
+            }
+        }
         if (!defined $block) {
             warn("no such block: $blockname\n");
             next;
