@@ -36,6 +36,7 @@ U+00AA      U+00AA      1
 -   `unicoder block 'EXCLAMATION MARK'`
 
 ```
+# Basic Latin
 U+0000      ???     <control> (NULL)
 U+0001      ???     <control> (START OF HEADING)
 U+0002      ???     <control> (START OF TEXT)
@@ -52,6 +53,7 @@ U+0022      "       QUOTATION MARK
 -   `unicoder table 'Basic Latin'`
 
 ```
+# Basic Latin
              0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
             --- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---
 U+0000      ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ??? ???
