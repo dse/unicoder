@@ -3,6 +3,9 @@ use warnings;
 use strict;
 use v5.10.0;
 
+use File::Basename qw(basename);
+our $PROGNAME = basename($0);
+
 use open IO => ':locale';
 use Encode qw(decode);
 use Encode::Locale;
@@ -18,36 +21,48 @@ use Unicoder;
 
 our $dry_run = 0;
 our $verbose = 0;
-our $dumper = 0;
 
 sub usage { print <<END; }
 usage:
-    $0 [<option> ...] <command> [<arguments> ...]
+    $PROGNAME [<option> ...] <command> [<arguments> ...]
 commands:
-    $0 list-blocks
-    $0 list-scripts
-    $0 charinfo '<char>'
-    $0 charinfo U+<hex>
-    $0 charinfo <decimal>               use 00 .. 09 for U+0000 .. U+0009
-    $0 charinfo '<charname>'
-    $0 search <keyword> ...             can use -<keyword> or +<keyword>
-    $0 help
+    $PROGNAME list-blocks
+    $PROGNAME list-scripts
+    $PROGNAME script '<scriptname>'
+    $PROGNAME block '<blockname>'
+    $PROGNAME table '<blockname>'
+    $PROGNAME charinfo '<char>'
+    $PROGNAME charprops '<char>'     single char., codepoint, or char. name
+    $PROGNAME search <keyword> ...   can use -<keyword> or +<keyword>
+    $PROGNAME help
 options:
     --dumper
+    --tsv, --tab-separated-values
+    --csv, --comma-separated-values
+    --text
+    --dec, --decimal
+    --oct, --octal
+    --hex, --hexadecimal
 END
 
+our $format;
+our $base;
+
 my $p = Getopt::Long::Parser->new();
-$p->configure('gnu_compat', 'bundling');
+$p->configure('gnu_compat', 'bundling', 'no_ignore_case');
 $p->getoptionsfromarray(
     \@ARGV,
-    'h|help' => sub {
-        usage;
-        exit 0;
-    },
-    'dumper' => \$dumper,
-    'v|verbose+' => \$verbose,
-    'n|dry-run' => \$dry_run,
-) or die("Type '$0 --help' for help.\n");
+    'h|help'                     => sub { usage; exit 0; },
+    'tsv|tab-separated-values'   => sub { $format = 'tsv'; },
+    'csv|comma-separated-values' => sub { $format = 'csv'; },
+    'text'                       => sub { $format = 'text'; },
+    'hex|hexadecimal'            => sub { $base = 16; },
+    'oct|octal'                  => sub { $base = 8; },
+    'dec|decimal'                => sub { $base = 10; },
+    'dumper|data-dumper'         => sub { $format = 'dumper'; },
+    'v|verbose+'                 => \$verbose,
+    'n|dry-run'                  => \$dry_run,
+) or die("Type '$PROGNAME --help' for help.\n");
 
 my ($command, @arguments) = @ARGV;
 if (!defined $command) {
@@ -55,7 +70,8 @@ if (!defined $command) {
 }
 
 my $unicoder = Unicoder->new();
-$unicoder->dumper($dumper);
+$unicoder->format($format) if defined $format;
+$unicoder->base($base)     if defined $base;
 
 if ($command =~ m{^(list-?)?blocks$}i) {
     $unicoder->listBlocks();
@@ -65,6 +81,10 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     foreach my $argument (@arguments) {
         $unicoder->charInfo($argument);
     }
+} elsif ($command =~ m{^char(acter)?(-?prop(?:s|erties))?$}i) {
+    foreach my $argument (@arguments) {
+        $unicoder->charProperties($argument);
+    }
 } elsif ($command =~ m{^search$}i) {
     $unicoder->search(@arguments);
 } elsif ($command =~ m{^help$}i) {
@@ -72,6 +92,8 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     exit(0);
 } elsif ($command =~ m{^block$}i) {
     $unicoder->listBlock(@arguments);
+} elsif ($command =~ m{^table$}i) {
+    $unicoder->listBlockTable(@arguments);
 } else {
     die("No such command: $command\n");
 }

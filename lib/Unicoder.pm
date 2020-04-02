@@ -3,19 +3,20 @@ use warnings;
 use strict;
 use v5.10.0;
 
-use Unicode::UCD qw(charblocks charscripts charinfo charblock);
+use Unicode::UCD qw(charblocks charscripts charinfo charblock
+                    charprops_all);
 use charnames qw();
 use Encode::Unicode qw();
-use Data::Dumper qw(Dumper);
+use Data::Dumper qw();
 use open IO => ':locale';
 use Encode qw(decode_utf8);
+use Sort::Naturally qw(nsort);
 
 select(STDERR); $| = 1;
 select(STDOUT);
 
 use Moo;
 
-has 'dumper'          => (is => 'rw', default => 0);
 has 'charBlockHash'   => (is => 'rw');
 has 'charScriptHash'  => (is => 'rw');
 has 'charBlockNames'  => (is => 'rw');
@@ -47,21 +48,37 @@ has clearToEOL => (
         return `tput el`;
     }
 );
+has format => (is => 'rw', default => 'text');
+has base => (is => 'rw', default => 16);
 
-sub charBlock {
+sub charBlockByName {
     my ($self, $blockName) = @_;
-    $blockName = lc $blockName;
-    ($blockName) = grep { lc $_ eq $blockName } @{$self->charBlockNames};
+    $blockName = $self->normalizeCharBlockName($blockName);
     return unless defined $blockName;
     return $self->charBlockHash->{$blockName};
 }
 
-sub charScript {
+sub charScriptByName {
+    my ($self, $scriptName) = @_;
+    $scriptName = $self->normalizeCharScriptName($scriptName);
+    return unless defined $scriptName;
+    return $self->charScriptHash->{$scriptName};
+}
+
+sub normalizeCharBlockName {
+    my ($self, $blockName) = @_;
+    $blockName = lc $blockName;
+    ($blockName) = grep { lc $_ eq $blockName } @{$self->charBlockNames};
+    return unless defined $blockName;
+    return $blockName;
+}
+
+sub normalizeCharScriptName {
     my ($self, $scriptName) = @_;
     $scriptName = lc $scriptName;
     ($scriptName) = grep { lc $_ eq $scriptName } @{$self->charScriptNames};
     return unless defined $scriptName;
-    return $self->charScriptHash->{$scriptName};
+    return $scriptName;
 }
 
 sub BUILD {
@@ -132,7 +149,10 @@ sub search {
           codepoint:
             foreach my $codepoint ($low .. $high) {
                 if (-t 2) {
-                    printf STDERR ("    %s %s%s\r", uplus($codepoint), $subblockname, $self->clearToEOL) if $codepoint % 0x100 == 0 || $codepoint eq $low;
+                    printf STDERR ("    %s %s%s\r",
+                                   $self->uplus($codepoint),
+                                   $subblockname,
+                                   $self->clearToEOL) if $codepoint % 0x100 == 0 || $codepoint eq $low;
                 }
                 my $charinfo = charinfo($codepoint);
                 my $charname = $charinfo->{name};
@@ -180,43 +200,58 @@ sub printCharacterLine {
     my $charinfo = charinfo($codepoint);
     my $charname = $charinfo->{name};
     my $charname10 = $charinfo->{unicode10};
-
     my $displayName = join(' ', grep { defined $_ } (
         $charname,
         (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
     ));
-
-    my $uplus = uplus($codepoint);
-    my $char = chr($codepoint);
-    if (defined $charname && $charname eq '<control>') {
-        $char = '???';
-    } elsif ($codepoint == 127) {
-        $char = '???';
-    } elsif ($codepoint >= 0 && $codepoint <= 31) {
-        $char = '???';
-    } elsif ($codepoint >= 128 && $codepoint <= 159) {
-        $char = '???';
-    }
-
+    my $uplus = $self->uplus($codepoint);
+    my $charDisplayed = $self->charDisplayed($codepoint) // '???';
     if (defined $charname) {
-        printf("%8s\t%s\t%s\n", $uplus, $char, $displayName);
+        if ($self->isDelimiterSeparated) {
+            $self->printDelimiterSeparatedLine($uplus, $charDisplayed, $displayName);
+        } else {
+            printf("%-8s    %-3s     %s\n", $uplus, $charDisplayed, $displayName);
+        }
     }
+}
+
+sub charDisplayed {
+    my ($self, $codepoint) = @_;
+    return undef if $codepoint == 127;
+    return undef if $codepoint >= 0 && $codepoint < 32;
+    return undef if $codepoint >= 128 && $codepoint < 160;
+    my $charinfo = charinfo($codepoint);
+    my $charname = $charinfo->{name};
+    return undef if defined $charname && $charname eq '<control>';
+    my $char = chr($codepoint);
+    return undef if $char =~ m{^\P{Print}$};
+    return $char;
 }
 
 sub listBlocks {
     my ($self) = @_;
-    if ($self->dumper) {
-        print Dumper $self->charblockHash;
+    if ($self->format eq 'dumper') {
+        print Dumper($self->charblockHash);
     } else {
         foreach my $blockname (@{$self->charBlockNames}) {
-            my $array = $self->charBlock($blockname);
+            my $array = $self->charBlockByName($blockname);
             my $firstLine = $blockname;
             foreach my $subblock (@$array) {
                 my ($start, $end, $subblockname) = @$subblock;
-                printf(" %8s %8s %7d %s", uplus($start), uplus($end), $end - $start + 1, $firstLine);
-                printf(" (%s)", $subblockname) if $subblockname ne $blockname;
-                print "\n";
-                $firstLine = '"';
+                if ($self->isDelimiterSeparated) {
+                    my (@line) = ($self->uplus($start), $self->uplus($end), $end - $start + 1, $firstLine);
+                    if ($firstLine ne '') {
+                        push(@line, $subblockname) if $subblockname ne $blockname;
+                    }
+                    $self->printDelimiterSeparatedLine(@line);
+                } else {
+                    printf("%-8s    %-8s    %-7d %s", $self->uplus($start), $self->uplus($end), $end - $start + 1, $firstLine);
+                    if ($firstLine ne '') {
+                        printf(" (%s)", $subblockname) if $subblockname ne $blockname;
+                    }
+                    print "\n";
+                }
+                $firstLine = '';
             }
         }
     }
@@ -224,17 +259,27 @@ sub listBlocks {
 
 sub listScripts {
     my ($self) = @_;
-    if ($self->dumper) {
-        print Dumper $self->charScriptHash;
+    if ($self->format eq 'dumper') {
+        print Dumper($self->charScriptHash);
     } else {
         foreach my $scriptname (@{$self->charScriptNames}) {
-            my $array = $self->charScript($scriptname);
+            my $array = $self->charScriptByName($scriptname);
             my $firstLine = $scriptname;
             foreach my $subblock (@$array) {
                 my ($start, $end, $subscriptname) = @$subblock;
-                printf("%-32s %8s %8s", $firstLine, uplus($start), uplus($end));
-                printf(" (%s)", $subscriptname) if $subscriptname ne $scriptname;
-                print "\n";
+                if ($self->isDelimiterSeparated) {
+                    my (@line) = ($self->uplus($start), $self->uplus($end), $end - $start + 1, $firstLine);
+                    if ($firstLine ne '') {
+                        push(@line, $subscriptname) if $subscriptname ne $scriptname;
+                    }
+                    $self->printDelimiterSeparatedLine(@line);
+                } else {
+                    printf("%-8s    %-8s    %-7d %s", $self->uplus($start), $self->uplus($end), $end - $start + 1, $firstLine);
+                    if ($firstLine ne '') {
+                        printf(" (%s)", $subscriptname) if $subscriptname ne $scriptname;
+                    }
+                    print "\n";
+                }
                 $firstLine = '';
             }
         }
@@ -242,10 +287,10 @@ sub listScripts {
 }
 
 sub charInfo {
-    my ($self, $char) = @_;
-    my $codepoint = $self->codepoint($char);
+    my ($self, $arg) = @_;
+    my $codepoint = $self->codepoint($arg);
     if (!defined $codepoint) {
-        warn("No character defined by: $char\n");
+        warn("No character defined by: $arg\n");
         return;
     }
     my $charname = charnames::viacode($codepoint);
@@ -258,44 +303,148 @@ sub charInfo {
         warn("No character info for codepoint: $codepoint\n");
         return;
     }
-    if ($self->dumper) {
-        print Dumper $charinfo;
+
+    if ($self->format eq 'dumper') {
+        print Dumper($charinfo);
         return;
     }
-    print Dumper $charinfo;
+    foreach my $key (nsort keys %$charinfo) {
+        if ($self->isDelimiterSeparated) {
+            $self->printDelimiterSeparatedLine($key, $charinfo->{$key});
+        } else {
+            printf("%-29s   %s\n", $key, $charinfo->{$key});
+        }
+    }
+}
+
+sub charProperties {
+    my ($self, $arg) = @_;
+    my $codepoint = $self->codepoint($arg);
+    if (!defined $codepoint) {
+        warn("No character defined by: $arg\n");
+        return;
+    }
+    my $charprops = charprops_all($codepoint);
+    if ($self->format eq 'dumper') {
+        print(Dumper($charprops));
+        return;
+    }
+    foreach my $key (nsort keys %$charprops) {
+        if ($self->isDelimiterSeparated) {
+            $self->printDelimiterSeparatedLine($key, $charprops->{$key});
+        } else {
+            printf("%-29s   %s\n", $key, $charprops->{$key});
+        }
+    }
 }
 
 sub listBlock {
-    my ($self, @blocknames) = @_;
-    foreach my $blockname (@blocknames) {
-        my $block = $self->charBlock($blockname);
+    my ($self, @args) = @_;
+    foreach my $arg (@args) {
+        my ($block, $blockname) = $self->getBlock($arg);
         if (!defined $block) {
-            my $codepoint = $self->codepoint($blockname);
-            if (defined $codepoint) {
-                my $charblock = charblock($codepoint);
-                if (defined $charblock) {
-                    $blockname = $charblock;
-                    $block = $self->charBlock($blockname);
-                }
-            }
-        }
-        if (!defined $block) {
-            warn("no such block: $blockname\n");
+            warn("no such block, codepoint, or character: $blockname\n");
             next;
         }
-        printf("# %s\n\n", $blockname);
+        printf("# %s\n", $blockname);
         foreach my $subblock (@$block) {
             my ($low, $high, $blockname) = @$subblock;
             foreach my $codepoint ($low .. $high) {
                 $self->printCharacterLine($codepoint);
             }
         }
-        print "\n";
     }
 }
 
+sub listBlockTable {
+    my ($self, @args) = @_;
+    foreach my $arg (@args) {
+        my ($block, $blockname) = $self->getBlock($arg);
+        if (!defined $block) {
+            warn("no such block, codepoint, or character: $blockname\n");
+            next;
+        }
+        printf("# %s\n", $blockname);
+
+        # header
+        if ($self->isDelimiterSeparated) {
+            $self->printDelimiterSeparatedLine('', '0' .. '9', 'A' .. 'F');
+        } else {
+            print(' ' x 11);
+            foreach my $c (0 .. 15) {
+                printf(' %2X ', $c);
+            }
+            print("\n");
+        }
+
+        # header border
+        if (!$self->isDelimiterSeparated) {
+            print(' ' x 11 . ' ---' x 16 . "\n");
+        }
+
+        foreach my $subblock (@$block) {
+            my ($low, $high, $blockname) = @$subblock;
+            my $llow = $low & ~0x0f;
+            my $hhigh = $high | 0x0f;
+            for (my $row = $llow; $row <= $hhigh; $row += 16) {
+                if ($self->isDelimiterSeparated) {
+                    $self->printDelimiterSeparatedLine(
+                        sprintf('U+%04X', $row),
+                        map { $self->charDisplayed($_) // '???' } ($row .. $row + 15)
+                    );
+                } else {
+                    printf("%-11s", sprintf('U+%04X', $row));
+                    foreach my $c (0 .. 15) {
+                        my $codepoint = $row + $c;
+                        my $charDisplayed = $self->charDisplayed($codepoint);
+                        if (defined $charDisplayed) {
+                            printf("  %s ", $charDisplayed);
+                        } else {
+                            print(' ???');
+                        }
+                    }
+                    print("\n");
+                }
+            }
+        }
+    }
+}
+
+sub getBlock {
+    my ($self, $arg) = @_;
+    my $blockname;
+    my $block = $self->charBlockByName($arg);
+    if (defined $block) {
+        $blockname = $self->normalizeCharBlockName($arg);
+    } else {
+        my $codepoint = $self->codepoint($arg);
+        if (defined $codepoint) {
+            my $charblock = charblock($codepoint);
+            if (defined $charblock) {
+                $blockname = $charblock;
+                $block = $self->charBlockByName($blockname);
+            }
+        } else {
+            return;
+        }
+    }
+    if (!defined $block) {
+        return;
+    }
+    return ($block, $blockname) if wantarray;
+    return $block;
+}
+
 sub uplus {
-    my ($codepoint) = @_;
+    my ($self, $codepoint) = @_;
+    if ($self->base == 10) {
+        return sprintf('%d', $codepoint);
+    }
+    if ($self->base == 8) {
+        my $octal = '0' . sprintf('%o', $codepoint);
+        $octal =~ s{^00+}{0};
+        return $octal;
+    }
     return sprintf('U+%04X', $codepoint);
 }
 
@@ -318,6 +467,39 @@ sub codepoint {
         return $vianame;
     }
     return;
+}
+
+sub isDelimiterSeparated {
+    my $self = shift;
+    return $self->format eq 'tsv' || $self->format eq 'csv';
+}
+
+has csv => (is => 'rw');
+
+sub printDelimiterSeparatedLine {
+    my ($self, @line) = @_;
+    if ($self->format eq 'tsv') {
+        print(join("\t", @line), "\n");
+        return;
+    }
+    if ($self->format eq 'csv') {
+        if (!$self->csv) {
+            require Text::CSV;
+            $self->csv(Text::CSV->new({ binary => 1, auto_diag => 1 }));
+        }
+        $self->csv->say(\*STDOUT, \@line);
+        return;
+    }
+}
+
+sub Dumper {
+    my (@args) = @_;
+    local $Data::Dumper::Indent   = 1;
+    local $Data::Dumper::Terse    = 1;
+    local $Data::Dumper::Deepcopy = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    local $Data::Dumper::Useqq    = 1;
+    print Data::Dumper::Dumper(@args);
 }
 
 1;
