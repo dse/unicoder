@@ -28,11 +28,10 @@ usage:
 commands:
     $PROGNAME list-blocks
     $PROGNAME list-scripts
-    $PROGNAME script '<scriptname>'
-    $PROGNAME block '<blockname>'
-    $PROGNAME table '<blockname>'
-    $PROGNAME charinfo '<char>'
-    $PROGNAME charprops '<char>'     single char., codepoint, or char. name
+    $PROGNAME block '<blockname>'    or char., codepoint, or char. name
+    $PROGNAME table '<blockname>'    "
+    $PROGNAME charinfo '<char>'      single char., codepoint, or char. name
+    $PROGNAME charprops '<char>'
     $PROGNAME search <keyword> ...   can use -<keyword> or +<keyword>
     $PROGNAME help
 options:
@@ -79,11 +78,27 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     $unicoder->listScripts();
 } elsif ($command =~ m{^char(acter)?(-?info)?$}i) {
     foreach my $argument (@arguments) {
-        $unicoder->charInfo($argument);
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->charInfo($_);
+            }
+        } else {
+            $unicoder->charInfo($argument);
+        }
     }
 } elsif ($command =~ m{^char(acter)?(-?prop(?:s|erties))?$}i) {
     foreach my $argument (@arguments) {
-        $unicoder->charProperties($argument);
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->charProperties($_);
+            }
+        } else {
+            $unicoder->charProperties($argument);
+        }
     }
 } elsif ($command =~ m{^search$}i) {
     $unicoder->search(@arguments);
@@ -91,9 +106,62 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     usage();
     exit(0);
 } elsif ($command =~ m{^block$}i) {
-    $unicoder->listBlock(@arguments);
+    foreach my $argument (@arguments) {
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->listBlock($_);
+            }
+        } else {
+            $unicoder->listBlock($argument);
+        }
+    }
 } elsif ($command =~ m{^table$}i) {
-    $unicoder->listBlockTable(@arguments);
+    foreach my $argument (@arguments) {
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->listBlockTable($_);
+            }
+        } else {
+            $unicoder->listBlockTable($argument);
+        }
+    }
+} elsif ($command =~ m{^each-?char(acter)?$}i) {
+    foreach my $argument (@arguments) {
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->eachCharacter($_);
+            }
+        } else {
+            $unicoder->eachCharacter($argument);
+        }
+    }
 } else {
     die("No such command: $command\n");
+}
+
+sub trim {
+    if (wantarray) {
+        my @result = @_;
+        foreach my $string (@result) {
+            $string =~ s{\A\s+}{}s;
+            $string =~ s{\s+\z}{}s;
+        }
+        return @result;
+    }
+    if (defined wantarray) {
+        my $string = shift;
+        $string =~ s{\A\s+}{}s;
+        $string =~ s{\s+\z}{}s;
+        return $string;
+    }
+    foreach my $string (@_) {
+        $string =~ s{\A\s+}{};
+        $string =~ s{\s+\z}{};
+    }
 }
