@@ -11,6 +11,10 @@ use Data::Dumper qw();
 use open IO => ':locale';
 use Encode qw(decode_utf8);
 use Sort::Naturally qw(nsort);
+use File::Path qw(make_path);
+use File::Basename qw(dirname);
+use LWP::UserAgent::Cached;
+use Text::Wrap qw();
 
 select(STDERR); $| = 1;
 select(STDOUT);
@@ -50,6 +54,9 @@ has clearToEOL => (
 );
 has format => (is => 'rw', default => 'text');
 has base => (is => 'rw', default => 16);
+
+has directory => (is => 'rw', default => "$ENV{HOME}/.unicoder");
+has namesList => (is => 'rw');
 
 sub charBlockByName {
     my ($self, $blockName) = @_;
@@ -304,15 +311,75 @@ sub charInfo {
         return;
     }
 
+    $self->getNamesList();
+    my $namesList = $self->namesList->{codepoints}->[$codepoint];
+
     if ($self->format eq 'dumper') {
+        if ($namesList) {
+            $charinfo->{namesList} = $namesList;
+        }
         print Dumper($charinfo);
         return;
     }
+
     foreach my $key (nsort keys %$charinfo) {
         if ($self->isDelimiterSeparated) {
             $self->printDelimiterSeparatedLine($key, $charinfo->{$key});
         } else {
             printf("%-29s   %s\n", $key, $charinfo->{$key});
+        }
+    }
+
+    local $Text::Wrap::columns = 79;
+    if (eval { scalar @{$namesList->{alternativeNames}} }) {
+        print("Alternative Names:\n");
+        foreach my $entry (@{$namesList->{alternativeNames}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+        }
+    }
+    if (eval { scalar @{$namesList->{characterNameAliases}} }) {
+        print("Character Name Aliases:\n");
+        foreach my $entry (@{$namesList->{characterNameAliases}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+        }
+    }
+    if (eval { scalar @{$namesList->{informativeNotes}} }) {
+        print("Informative Notes:\n");
+        foreach my $entry (@{$namesList->{informativeNotes}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+        }
+    }
+    if (eval { scalar @{$namesList->{crossReferences}} }) {
+        print("Cross References:\n");
+        foreach my $entry (@{$namesList->{crossReferences}}) {
+            if ($entry->{codepoint}) {
+                my $hexCodepoint = sprintf('U+%04X', $entry->{codepoint});
+                my $charinfo = charinfo($entry->{codepoint});
+                printf("-   %-8s  %s  %s\n",
+                       $hexCodepoint,
+                       chr($entry->{codepoint}),
+                       $charinfo->{name});
+            } else {
+                print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+            }
+        }
+    }
+    if (eval { scalar @{$namesList->{compatibilityDecompositions}} }) {
+        print("Compatibility Decompositions:\n");
+        foreach my $entry (@{$namesList->{compatibilityDecompositions}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+        }
+    }
+    if (eval { scalar @{$namesList->{canonicalDecompositions}} }) {
+        print("Canonical Decompositions:\n");
+        foreach my $entry (@{$namesList->{canonicalDecompositions}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
+        }
+    }
+    if (eval { scalar @{$namesList->{standardizedVariationSequences}} }) {
+        print("Standardized Variation Sequences:\n");
+        foreach my $entry (@{$namesList->{standardizedVariationSequences}}) {
+            print(Text::Wrap::wrap('-   ', '    ', $entry->{text}), "\n");
         }
     }
 }
@@ -467,6 +534,111 @@ sub codepoint {
         return $vianame;
     }
     return;
+}
+
+sub fetchNamesList {
+    my ($self) = @_;
+    if ($self->namesList) {
+        return;
+    }
+    my $url = 'https://unicode.org/Public/UNIDATA/NamesList.txt';
+    my $cacheDir = $self->directory . '/' . 'cache';
+    make_path($cacheDir);
+    my $ua = LWP::UserAgent::Cached->new(cache_dir => $cacheDir);
+    warn("Fetching $url ...\n");
+    my $response = $ua->get($url);
+    warn("    Done.\n");
+    if (!$response->is_success) {
+        $self->namesList(undef);
+        return;
+    }
+    $self->namesList($response->decoded_content);
+}
+
+sub buildNamesList {
+    my ($self) = @_;
+    if ($self->namesList && ref $self->namesList eq 'HASH') {
+        return;
+    }
+    my $content = $self->namesList;
+    my $hash = {};
+    local $_;
+    my $namesList = {};
+    my $codepoint;
+    foreach (split(/\r?\n/, $content)) {
+        if (m{^\;}) {
+            next;
+        } elsif (m{^([[:alnum:]]+)\s+(.*)$}) {
+            ($codepoint, my $name) = ($1, $2);
+            $codepoint = hex($codepoint);
+            $namesList->{codepoints}->[$codepoint]->{name} = $name;
+            $namesList->{codepoints}->[$codepoint]->{codepoint} = $codepoint;
+            $namesList->{codepoints}->[$codepoint]->{hexCodepoint} = sprintf('U+%04X', $codepoint);
+        } elsif (m{^\S}) {
+            $codepoint = undef;
+            next;
+        } elsif (m{^\s+\=\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{alternativeNames}}, { text => $' });
+        } elsif (m{^\s+\%\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{characterNameAliases}}, { text => $' });
+        } elsif (m{^\s+\*\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{informativeNotes}}, { text => $' });
+        } elsif (m{^\s+x\s+}) {
+            my $crossReference = $';
+            if (!defined $codepoint) {
+                next;
+            }
+            if ($crossReference =~ m{^\s*\(\s*
+                                     (.*)
+                                     \s*-\s*
+                                     ([[:xdigit:]]+)
+                                     \s*\)\s*$}x) {
+                my ($name, $codepointXref) = ($1, $2);
+                $codepointXref = hex($codepointXref);
+                push(@{$namesList->{codepoints}->[$codepoint]->{crossReferences}}, {
+                    text => $crossReference,
+                    name => uc($name),
+                    codepoint => $codepointXref,
+                    hexCodepoint => sprintf('U+%04X', $codepointXref),
+                });
+            } else {
+                push(@{$namesList->{codepoints}->[$codepoint]->{crossReferences}}, {
+                    text => $crossReference
+                });
+            }
+        } elsif (m{^\s+\#\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{compatibilityDecompositions}}, { text => $' });
+        } elsif (m{^\s+\:\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{canonicalDecompositions}}, { text => $' });
+        } elsif (m{^\s+\~\s+}) {
+            if (!defined $codepoint) {
+                next;
+            }
+            push(@{$namesList->{codepoints}->[$codepoint]->{standardizedVariationSequences}}, { text => $' });
+        }
+    }
+    $self->namesList($namesList);
+}
+
+sub getNamesList {
+    my ($self) = @_;
+    $self->fetchNamesList();
+    $self->buildNamesList();
 }
 
 sub isDelimiterSeparated {
