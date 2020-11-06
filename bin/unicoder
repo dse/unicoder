@@ -16,9 +16,13 @@ use lib "${FindBin::Bin}/../lib";
 
 use Unicoder;
 
-our $dry_run = 0;
-our $verbose = 0;
-our $dumper = 0;
+our $dry_run        = 0;
+our $verbose        = 0;
+
+our $group_by_block = 0;
+our $data_dumper    = 0;
+our $json           = 0;
+our $yaml           = 0;
 
 sub usage { print <<END; }
 usage:
@@ -33,7 +37,10 @@ commands:
     $0 search <keyword> ...             can use -<keyword> or +<keyword>
     $0 help
 options:
-    --dumper
+    --group-by-block
+    --data-dumper
+    --json
+    --yaml
 END
 
 my $p = Getopt::Long::Parser->new();
@@ -44,9 +51,12 @@ $p->getoptionsfromarray(
         usage;
         exit 0;
     },
-    'dumper' => \$dumper,
-    'v|verbose+' => \$verbose,
-    'n|dry-run' => \$dry_run,
+    'group-by-block' => \$group_by_block,
+    'data-dumper'    => \$data_dumper,
+    'json'           => \$json,
+    'yaml'           => \$yaml,
+    'v|verbose+'     => \$verbose,
+    'n|dry-run'      => \$dry_run,
 ) or die("Type '$0 --help' for help.\n");
 
 my ($command, @arguments) = @ARGV;
@@ -55,7 +65,12 @@ if (!defined $command) {
 }
 
 my $unicoder = Unicoder->new();
-$unicoder->dumper($dumper);
+$unicoder->verbose($verbose);
+$unicoder->dryRun($dry_run);
+$unicoder->groupByBlock($group_by_block);
+$unicoder->dataDumper($data_dumper);
+$unicoder->json($json);
+$unicoder->yaml($yaml);
 
 if ($command =~ m{^(list-?)?blocks$}i) {
     $unicoder->listBlocks();

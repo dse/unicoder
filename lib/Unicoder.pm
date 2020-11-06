@@ -3,10 +3,9 @@ use warnings;
 use strict;
 use v5.10.0;
 
-use Unicode::UCD qw(charblocks charscripts charinfo charblock);
+use Unicode::UCD qw(charblocks charscripts charinfo charblock general_categories);
 use charnames qw();
 use Encode::Unicode qw();
-use Data::Dumper qw(Dumper);
 use open IO => ':locale';
 use Encode qw(decode_utf8);
 
@@ -15,7 +14,6 @@ select(STDOUT);
 
 use Moo;
 
-has 'dumper'          => (is => 'rw', default => 0);
 has 'charBlockHash'   => (is => 'rw');
 has 'charScriptHash'  => (is => 'rw');
 has 'charBlockNames'  => (is => 'rw');
@@ -47,6 +45,69 @@ has clearToEOL => (
         return `tput el`;
     }
 );
+has generalCategories => (
+    is => 'rw', lazy => 1, default => sub {
+        my $categories = general_categories();
+        return $categories;
+    }
+);
+
+has verbose      => (is => 'rw', default => 0); # eh?
+has dryRun       => (is => 'rw', default => 0); # eh?
+has groupByBlock => (is => 'rw', default => 0); # mainly for search
+
+has dataDumper   => (is => 'rw', default => 0);
+has json         => (is => 'rw', default => 0);
+has yaml         => (is => 'rw', default => 0);
+
+use Data::Dumper qw();
+use YAML qw();
+use JSON qw(-support_by_pp);
+
+has jsonEncoder => (
+    is => 'rw', lazy => 1, default => sub {
+        my $json = JSON->new();
+        $json->ascii(1);
+        $json->pretty(1);
+        $json->indent_length(4);
+        $json->canonical(1);    # sort keys
+        return $json;
+    },
+);
+
+sub dump {
+    my ($self) = @_;
+    return 1 if $self->dataDumper;
+    return 1 if $self->json;
+    return 1 if $self->yaml;
+    return 0;
+}
+
+sub encode {
+    my ($self, $object) = @_;
+    return $self->dataDumperEncode($object) if $self->dataDumper;
+    return $self->jsonEncode($object) if $self->json;
+    return $self->yamlEncode($object) if $self->yaml;
+    return;
+}
+
+sub dataDumperEncode {
+    my ($self, $object) = @_;
+    local $Data::Dumper::Indent   = 1;
+    local $Data::Dumper::Terse    = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    return Data::Dumper::Dumper($object);
+}
+
+sub jsonEncode {
+    my ($self, $object) = @_;
+    return $self->jsonEncoder->encode($object);
+}
+
+sub yamlEncode {
+    my ($self, $object) = @_;
+    return YAML::Dump($object);
+}
 
 sub charBlock {
     my ($self, $blockName) = @_;
@@ -121,10 +182,13 @@ sub search {
         push(@searches, [$rx, $number]);
     }
 
+    my %blocks;
+    my @blocks;
     my @results;
 
   block:
     foreach my $block (@{$self->charBlockArray}) {
+        my $blockName = $block->[0]->[2];
       subblock:
         foreach my $subblock (@$block) {
             my ($low, $high, $subblockname) = @$subblock;
@@ -156,7 +220,22 @@ sub search {
                         }
                     }
                 }
-                push(@results, [$codepoint, $weight]) if $codepointMatches;
+                if ($codepointMatches) {
+                    my $result = [$codepoint, $weight];
+                    push(@results, $result);
+                    if ($self->groupByBlock) {
+                        if (!$blocks{$low}) {
+                            push(@blocks, {
+                                blockName => $blockName,
+                                blockStart => $low,
+                                blockEnd => $high,
+                                results => [],
+                            });
+                            $blocks{$low} = 1;
+                        }
+                        push(@{$blocks[-1]->{results}}, $result);
+                    }
+                }
             }
         }
     }
@@ -168,15 +247,29 @@ sub search {
         ($b->[1] <=> $a->[1]) || ($a->[0] <=> $b->[0])
     } @results;
 
-    foreach my $result (@results) {
-        my $codepoint = $result->[0];
-        my $weight = $result->[1];
-        $self->printCharacterLine($codepoint, $weight);
+    if ($self->groupByBlock) {
+        foreach my $block (@blocks) {
+            printf("%s (%s %s)\n",
+                   $block->{blockName},
+                   uplus($block->{blockStart}),
+                   uplus($block->{blockEnd}));
+            foreach my $result (@{$block->{results}}) {
+                my $codepoint = $result->[0];
+                my $weight = $result->[1];
+                $self->printCharacterLine($codepoint, $weight, indent => 4);
+            }
+        }
+    } else {
+        foreach my $result (@results) {
+            my $codepoint = $result->[0];
+            my $weight = $result->[1];
+            $self->printCharacterLine($codepoint, $weight);
+        }
     }
 }
 
 sub printCharacterLine {
-    my ($self, $codepoint, $weight) = @_;
+    my ($self, $codepoint, $weight, %options) = @_;
     my $charinfo = charinfo($codepoint);
     my $charname = $charinfo->{name};
     my $charname10 = $charinfo->{unicode10};
@@ -199,44 +292,45 @@ sub printCharacterLine {
     }
 
     if (defined $charname) {
+        print(" " x $options{indent}) if $options{indent};
         printf("%8s\t%s\t%s\n", $uplus, $char, $displayName);
     }
 }
 
 sub listBlocks {
     my ($self) = @_;
-    if ($self->dumper) {
-        print Dumper $self->charblockHash;
-    } else {
-        foreach my $blockname (@{$self->charBlockNames}) {
-            my $array = $self->charBlock($blockname);
-            my $firstLine = $blockname;
-            foreach my $subblock (@$array) {
-                my ($start, $end, $subblockname) = @$subblock;
-                printf(" %8s %8s %7d %s", uplus($start), uplus($end), $end - $start + 1, $firstLine);
-                printf(" (%s)", $subblockname) if $subblockname ne $blockname;
-                print "\n";
-                $firstLine = '"';
-            }
+    if ($self->dump) {
+        print $self->encode($self->charBlockHash);
+        return;
+    }
+    foreach my $blockname (@{$self->charBlockNames}) {
+        my $array = $self->charBlock($blockname);
+        my $firstLine = $blockname;
+        foreach my $subblock (@$array) {
+            my ($start, $end, $subblockname) = @$subblock;
+            printf(" %8s %8s %7d %s", uplus($start), uplus($end), $end - $start + 1, $firstLine);
+            printf(" (%s)", $subblockname) if $subblockname ne $blockname;
+            print "\n";
+            $firstLine = '"';
         }
     }
 }
 
 sub listScripts {
     my ($self) = @_;
-    if ($self->dumper) {
-        print Dumper $self->charScriptHash;
-    } else {
-        foreach my $scriptname (@{$self->charScriptNames}) {
-            my $array = $self->charScript($scriptname);
-            my $firstLine = $scriptname;
-            foreach my $subblock (@$array) {
-                my ($start, $end, $subscriptname) = @$subblock;
-                printf("%-32s %8s %8s", $firstLine, uplus($start), uplus($end));
-                printf(" (%s)", $subscriptname) if $subscriptname ne $scriptname;
-                print "\n";
-                $firstLine = '';
-            }
+    if ($self->dump) {
+        print $self->encode($self->charScriptHash);
+        return;
+    }
+    foreach my $scriptname (@{$self->charScriptNames}) {
+        my $array = $self->charScript($scriptname);
+        my $firstLine = $scriptname;
+        foreach my $subblock (@$array) {
+            my ($start, $end, $subscriptname) = @$subblock;
+            printf("%-32s %8s %8s", $firstLine, uplus($start), uplus($end));
+            printf(" (%s)", $subscriptname) if $subscriptname ne $scriptname;
+            print "\n";
+            $firstLine = '';
         }
     }
 }
@@ -258,11 +352,28 @@ sub charInfo {
         warn("No character info for codepoint: $codepoint\n");
         return;
     }
-    if ($self->dumper) {
-        print Dumper $charinfo;
+    if ($self->dump) {
+        print $self->encode($charinfo);
         return;
     }
-    print Dumper $charinfo;
+
+    my $shortCategory = $charinfo->{category};
+    my $longCategory  = $self->generalCategories->{$shortCategory};
+    $charinfo->{category} = {
+        short => $shortCategory,
+        long  => $longCategory,
+    };
+
+    my $code = $charinfo->{code};
+    $charinfo->{code} = {
+        hexadecimal => $code,
+        decimal     => hex($code)
+    };
+
+    local $Data::Dumper::Indent   = 1;
+    local $Data::Dumper::Terse    = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    print $self->dataDumperEncode($charinfo);
 }
 
 sub listBlock {
