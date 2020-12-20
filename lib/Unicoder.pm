@@ -15,6 +15,7 @@ use File::Path qw(make_path);
 use File::Basename qw(dirname);
 use LWP::UserAgent::Cached;
 use Text::Wrap qw();
+use List::Util qw(max);
 
 select(STDERR); $| = 1;
 select(STDOUT);
@@ -28,25 +29,30 @@ has 'charScriptNames' => (is => 'rw');
 has 'charBlockArray'  => (is => 'rw');
 has 'charScriptArray' => (is => 'rw');
 has 'noSearch' => (
-    is => 'rw', default => sub {
-        return {
-            'Low Surrogates'                     => 1,
-            'High Surrogates'                    => 1,
-            'High Private Use Surrogates'        => 1,
-            'Private Use Area'                   => 1,
-            'Supplementary Private Use Area-A'   => 1,
-            'Supplementary Private Use Area-B'   => 1,
-            'CJK Unified Ideographs'             => 1,
-            'CJK Unified Ideographs Extension B' => 1,
-            'CJK Unified Ideographs Extension C' => 1,
-            'CJK Unified Ideographs Extension D' => 1,
-            'CJK Unified Ideographs Extension E' => 1,
-            'CJK Unified Ideographs Extension F' => 1,
-            'Tangut'                             => 1,
-            'Tangut Components'                  => 1,
-        };
-    }
-);
+                   is => 'rw', default => sub {
+                       return {
+                               'Low Surrogates'                          => 1,
+                               'High Surrogates'                         => 1,
+                               'High Private Use Surrogates'             => 1,
+                               'Private Use Area'                        => 1,
+                               'Supplementary Private Use Area-A'        => 1,
+                               'Supplementary Private Use Area-B'        => 1,
+                               'CJK Unified Ideographs'                  => 1,
+                               'CJK Unified Ideographs Extension B'      => 1,
+                               'CJK Unified Ideographs Extension C'      => 1,
+                               'CJK Unified Ideographs Extension D'      => 1,
+                               'CJK Unified Ideographs Extension E'      => 1,
+                               'CJK Unified Ideographs Extension F'      => 1,
+                               'Tangut'                                  => 1,
+                               'Tangut Components'                       => 1,
+                               'Variation Selectors Supplement'          => 1,
+                               'CJK Unified Ideographs Extension A'      => 1,
+                               'CJK Compatibility Ideographs'            => 1,
+                               'CJK Compatibility Ideographs Supplement' => 1,
+                               'Nushu'                                   => 1,
+                              };
+                   }
+                  );
 has clearToEOL => (
     is => 'rw', lazy => 1, default => sub {
         return `tput el`;
@@ -57,6 +63,50 @@ has base => (is => 'rw', default => 16);
 
 has directory => (is => 'rw', default => "$ENV{HOME}/.unicoder");
 has namesList => (is => 'rw');
+
+has numSearchableBlocks => (is => 'rw', lazy => 1, default => \&computeNumSearchableBlocks);
+
+use IO::File;
+
+our $CLEAR_TO_EOL;
+BEGIN {
+    $CLEAR_TO_EOL = `tput el`;
+}
+
+sub progress {
+    my ($self, $format, @args) = @_;
+    my $msg;
+    if (scalar @args) {
+        $msg = sprintf($format, @args);
+    } else {
+        $msg = $format;
+    }
+    if ($msg =~ m{\n\z}) {
+        STDERR->print($msg);
+    } else {
+        if (-t 2 && $CLEAR_TO_EOL ne '') {
+            STDERR->print("\r" . $msg . $CLEAR_TO_EOL);
+            STDERR->flush();
+        } else {
+            STDERR->print($msg . "\n");
+        }
+    }
+}
+
+sub computeNumSearchableBlocks {
+    my ($self) = @_;
+    my $result = 0;
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my $subblockname = $subblock->[2];
+            next subblock if $self->noSearch->{$subblockname};
+            $result += 1;
+        }
+    }
+    return $result;
+}
 
 sub charBlockByName {
     my ($self, $blockName) = @_;
@@ -86,6 +136,267 @@ sub normalizeCharScriptName {
     ($scriptName) = grep { lc $_ eq $scriptName } @{$self->charScriptNames};
     return unless defined $scriptName;
     return $scriptName;
+}
+
+sub buildDatabase {
+    my ($self) = @_;
+    my $dbFile = $self->directory . '/db/unicoder.pl';
+    my $dbFile2 = $self->directory . '/db/unicoder2.pl';
+
+    my $fh;
+    make_path(dirname($dbFile));
+    if (!open($fh, '>', $dbFile)) {
+        warn("cannot write $dbFile: $!\n");
+        return;
+    }
+
+    my $fh2;
+    make_path(dirname($dbFile2));
+    if (!open($fh2, '>', $dbFile2)) {
+        warn("cannot write $dbFile2: $!\n");
+        return;
+    }
+
+    my $hash = {
+                charname => {},
+                charname10 => {}
+               };
+
+    my $total = $self->numSearchableBlocks;
+    my $count = 0;
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my ($low, $high, $subblockname) = @$subblock;
+            next subblock if $self->noSearch->{$subblockname};
+            $count += 1;
+            if (-t 2) {
+                $self->progress("buildDatabase: ($count/$total) $subblockname");
+            }
+            foreach my $codepoint ($low .. $high) {
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+                next if !defined $charname && !defined $charname10;
+                $charname   = lc $charname   if defined $charname;
+                $charname10 = lc $charname10 if defined $charname10;
+                my @charname;
+                my @charname10;
+                @charname   = grep { defined $_ && $_ ne '' } split(qr{[^A-Za-z0-9]+}, $charname)   if defined $charname;
+                @charname10 = grep { defined $_ && $_ ne '' } split(qr{[^A-Za-z0-9]+}, $charname10) if defined $charname10;
+                my $i;
+                $i = 0;
+                foreach my $word (@charname) {
+                    $i += 1;
+                    $hash->{charname}->{$word}->{$codepoint} = $i;
+                }
+                $i = 0;
+                foreach my $word (@charname10) {
+                    $i += 1;
+                    $hash->{charname10}->{$word}->{$codepoint} = $i;
+                }
+            }
+        }
+    }
+    if (-t 2) {
+        $self->progress("\n");
+    }
+
+    print $fh Dumper($hash);
+    if (!close($fh)) {
+        die("cannot close $dbFile: $!\n");
+    }
+
+    print $fh2 CompactDumper($hash);
+    if (!close($fh2)) {
+        die("cannot close $dbFile2: $!\n");
+    }
+}
+
+sub buildTextList {
+    my ($self) = @_;
+    my $dbFile = $self->directory . '/db/unicoder.txt';
+
+    my $fh;
+    make_path(dirname($dbFile));
+    if (!open($fh, '>', $dbFile)) {
+        warn("cannot write $dbFile: $!\n");
+        return;
+    }
+
+    my $total = $self->numSearchableBlocks;
+    my $count = 0;
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my ($low, $high, $subblockname) = @$subblock;
+            next subblock if $self->noSearch->{$subblockname};
+            $count += 1;
+            if (-t 2) {
+                $self->progress("buildTextList: ($count/$total) $subblockname");
+            }
+            foreach my $codepoint ($low .. $high) {
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+                next if !defined $charname && !defined $charname10;
+                printf $fh ("%-8s", sprintf("U+%04X", $codepoint));
+                if (($codepoint >= 0 && $codepoint < 32) || ($codepoint >= 127 && $codepoint < 160)) {
+                    print $fh ("  ?");
+                } else {
+                    printf $fh ("  %s", chr($codepoint));
+                }
+                printf $fh ("  %s", $charname)     if defined $charname;
+                printf $fh ("  (%s)", $charname10) if defined $charname10;
+                print $fh ("\n");
+            }
+        }
+    }
+    if (-t 2) {
+        $self->progress("\n");
+    }
+    if (!close($fh)) {
+        die("cannot close $dbFile: $!\n");
+    }
+}
+
+sub buildTextDatabase {
+    my ($self) = @_;
+    my $dbFile = $self->directory . '/db/unicoder.db.txt';
+
+    my $fh;
+    make_path(dirname($dbFile));
+    if (!open($fh, '>', $dbFile)) {
+        warn("cannot write $dbFile: $!\n");
+        return;
+    }
+
+    my $hash = {
+                charname => {},
+                charname10 => {}
+               };
+
+    my $total = $self->numSearchableBlocks;
+    my $count = 0;
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my ($low, $high, $subblockname) = @$subblock;
+            next subblock if $self->noSearch->{$subblockname};
+            $count += 1;
+            if (-t 2) {
+                $self->progress("buildTextDatabase: ($count/$total) $subblockname");
+            }
+            foreach my $codepoint ($low .. $high) {
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+                next if !defined $charname && !defined $charname10;
+                $charname   = lc $charname   if defined $charname;
+                $charname10 = lc $charname10 if defined $charname10;
+                my @charname;
+                my @charname10;
+                @charname   = grep { defined $_ && $_ ne '' } split(qr{[^A-Za-z0-9]+}, $charname)   if defined $charname;
+                @charname10 = grep { defined $_ && $_ ne '' } split(qr{[^A-Za-z0-9]+}, $charname10) if defined $charname10;
+                my $i;
+                $i = 0;
+                foreach my $word (@charname) {
+                    $i += 1;
+                    say $fh "1 $word $codepoint $i";
+                }
+                $i = 0;
+                foreach my $word (@charname10) {
+                    $i += 1;
+                    say $fh "2 $word $codepoint $i";
+                }
+            }
+        }
+    }
+    if (-t 2) {
+        $self->progress("\n");
+    }
+    if (!close($fh)) {
+        die("cannot close $dbFile: $!\n");
+    }
+}
+
+sub listAll {
+    my ($self) = @_;
+
+    my %lengths = $self->maxLengths();
+    my $max1 = $lengths{subblockname};
+    my $max2 = $lengths{charname};
+
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my ($low, $high, $subblockname) = @$subblock;
+            next subblock if $self->noSearch->{$subblockname};
+            foreach my $codepoint ($low .. $high) {
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+                next if !defined $charname && !defined $charname10;
+                printf("%-*s", $max1, $subblockname);
+                printf("   %-*s", 8, sprintf("   U+%04X", $codepoint));
+                printf("   %-*s", $max2, $charname // '-');
+                printf("   %s", $charname10) if defined $charname10;
+                print("\n");
+            }
+        }
+    }
+}
+
+sub maxLengths {
+    my ($self) = @_;
+
+    my $max1 = 0;
+    my $max2 = 0;
+    my $max3 = 0;
+  block:
+    foreach my $block (@{$self->charBlockArray}) {
+      subblock:
+        foreach my $subblock (@$block) {
+            my ($low, $high, $subblockname) = @$subblock;
+            next subblock if $self->noSearch->{$subblockname};
+            $max1 = max($max1, length $subblockname);
+            foreach my $codepoint ($low .. $high) {
+                my $charinfo = charinfo($codepoint);
+                my $charname = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+                next if !defined $charname && !defined $charname10;
+                $max2 = max($max2, length $charname)   if defined $charname;
+                $max3 = max($max3, length $charname10) if defined $charname10;
+            }
+        }
+    }
+
+    my $result = {
+                  subblockname => $max1,
+                  charname => $max2,
+                  charname10 => $max3
+                 };
+    return %$result if wantarray;
+    return $result;
+}
+
+sub buildSqliteDatabase {
+    my ($self) = @_;
+    my $dbFile = $self->directory . '/unicoder.sqlite';
 }
 
 sub BUILD {
@@ -164,6 +475,8 @@ sub search {
                 my $charinfo = charinfo($codepoint);
                 my $charname = $charinfo->{name};
                 my $charname10 = $charinfo->{unicode10};
+                $charname   = undef if $charname   !~ m{\S};
+                $charname10 = undef if $charname10 !~ m{\S};
                 next codepoint if !defined $charname;
                 my $codepointMatches = 0;
                 my $weight = 0;
@@ -207,6 +520,8 @@ sub printCharacterLine {
     my $charinfo = charinfo($codepoint);
     my $charname = $charinfo->{name};
     my $charname10 = $charinfo->{unicode10};
+    $charname   = undef if $charname   !~ m{\S};
+    $charname10 = undef if $charname10 !~ m{\S};
     my $displayName = join(' ', grep { defined $_ } (
         $charname,
         (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
@@ -671,7 +986,16 @@ sub Dumper {
     local $Data::Dumper::Deepcopy = 1;
     local $Data::Dumper::Sortkeys = 1;
     local $Data::Dumper::Useqq    = 1;
-    print Data::Dumper::Dumper(@args);
+    return Data::Dumper::Dumper(@args);
+}
+
+sub CompactDumper {
+    my (@args) = @_;
+    local $Data::Dumper::Indent   = 0;
+    local $Data::Dumper::Terse    = 1;
+    local $Data::Dumper::Deepcopy = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    return Data::Dumper::Dumper(@args);
 }
 
 1;
