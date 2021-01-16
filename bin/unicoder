@@ -167,6 +167,12 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     }
 } elsif ($command =~ m{^u\+[[:xdigit:]]+$}i) {
     $unicoder->charInfo($command);
+} elsif ($command =~ m{^build$}i) {
+    $unicoder->buildDatabase();
+    $unicoder->buildTextDatabase();
+    $unicoder->buildTextList();
+} elsif ($command =~ m{^listall$}i) {
+    $unicoder->listAll();
 } else {
     die("No such command: $command\n");
 }
