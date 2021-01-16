@@ -48,7 +48,7 @@ our $format;
 our $base;
 
 my $p = Getopt::Long::Parser->new();
-$p->configure('gnu_compat', 'bundling', 'no_ignore_case');
+$p->configure('gnu_compat', 'bundling', 'no_ignore_case', 'no_getopt_compat');
 $p->getoptionsfromarray(
     \@ARGV,
     'h|help'                     => sub { usage; exit 0; },
@@ -76,7 +76,7 @@ if ($command =~ m{^(list-?)?blocks$}i) {
     $unicoder->listBlocks();
 } elsif ($command =~ m{^(list-?)?scripts$}i) {
     $unicoder->listScripts();
-} elsif ($command =~ m{^char(acter)?(-?info)?$}i) {
+} elsif ($command =~ m{^char(acter)?-?info$}i) {
     foreach my $argument (@arguments) {
         if ($argument eq '-') {
             local @ARGV = ('-');
@@ -129,7 +129,7 @@ if ($command =~ m{^(list-?)?blocks$}i) {
             $unicoder->listBlockTable($argument);
         }
     }
-} elsif ($command =~ m{^each-?char(acter)?$}i) {
+} elsif ($command =~ m{^(each-?)?char(acter)?s?$}i) {
     foreach my $argument (@arguments) {
         if ($argument eq '-') {
             local @ARGV = ('-');
@@ -141,6 +141,32 @@ if ($command =~ m{^(list-?)?blocks$}i) {
             $unicoder->eachCharacter($argument);
         }
     }
+} elsif ($command =~ m{^char(acter)?-?names?$}i) {
+    foreach my $argument (@arguments) {
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->printCharacterName($_);
+            }
+        } else {
+            $unicoder->printCharacterName($argument);
+        }
+    }
+} elsif ($command =~ m{^block-?names?$}i) {
+    foreach my $argument (@arguments) {
+        if ($argument eq '-') {
+            local @ARGV = ('-');
+            while (<>) {
+                $_ = trim($_);
+                $unicoder->printBlockName($_);
+            }
+        } else {
+            $unicoder->printBlockName($argument);
+        }
+    }
+} elsif ($command =~ m{^u\+[[:xdigit:]]+$}i) {
+    $unicoder->charInfo($command);
 } else {
     die("No such command: $command\n");
 }

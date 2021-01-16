@@ -4,7 +4,7 @@ use strict;
 use v5.10.0;
 
 use Unicode::UCD qw(charblocks charscripts charinfo charblock
-                    charprops_all);
+                    charprops_all prop_value_aliases);
 use charnames qw();
 use Encode::Unicode qw();
 use Data::Dumper qw();
@@ -456,10 +456,10 @@ sub codepoint {
     if (length($spec) == 1) {
         return ord($spec);
     }
-    if ($spec =~ m{^u\+?([[:xdigit:]]+)$}i) {
+    if ($spec =~ m{^u\+?([[:xdigit:]]+)($|[^[:alnum:]])}i) {
         return hex($1);
     }
-    if ($spec =~ m{^0?x([[:xdigit:]]+)$}i) {
+    if ($spec =~ m{^0?x([[:xdigit:]]+)($|[^[:alnum:]])}i) {
         return hex($1);
     }
     my $vianame = charnames::vianame(uc $spec);
@@ -490,6 +490,84 @@ sub printDelimiterSeparatedLine {
         $self->csv->say(\*STDOUT, \@line);
         return;
     }
+}
+
+sub eachCharacter {
+    my ($self, $arg) = @_;
+    my $codepoint = $self->codepoint($arg);
+    if (!defined $codepoint) {
+        warn("No character defined by: $arg\n");
+        return;
+    }
+    my $charname = charnames::viacode($codepoint);
+    if (!defined $charname) {
+        warn("No character name for codepoint: $codepoint\n");
+        return;
+    }
+    my $charinfo = charinfo($codepoint);
+    if (!$charinfo) {
+        warn("No character info for codepoint: $codepoint\n");
+        return;
+    }
+    $self->printCharacterLine($codepoint);
+}
+
+sub printCharacterName {
+    my ($self, $arg) = @_;
+    my $codepoint = $self->codepoint($arg);
+    if (!defined $codepoint) {
+        warn("No character defined by: $arg\n");
+        if (!-t 1) {
+            print("\n");
+        }
+        return;
+    }
+    my $charname = charnames::viacode($codepoint);
+    if (!defined $charname) {
+        warn("No character name for codepoint: $codepoint\n");
+        if (!-t 1) {
+            print("\n");
+        }
+        return;
+    }
+    my $charinfo = charinfo($codepoint);
+    if (!$charinfo) {
+        warn("No character info for codepoint: $codepoint\n");
+        if (!-t 1) {
+            print("\n");
+        }
+        return;
+    }
+    my $charname10 = $charinfo->{unicode10};
+    my $displayName = join(' ', grep { defined $_ } (
+        $charname,
+        (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
+    ));
+    printf("%s\n", $displayName);
+}
+
+sub printBlockName {
+    my ($self, $arg) = @_;
+    my $codepoint = $self->codepoint($arg);
+    if (!defined $codepoint) {
+        warn("No character defined by: $arg\n");
+        if (!-t 1) {
+            print("\n");
+        }
+        return;
+    }
+    my $charblock = charblock($codepoint);
+    if (!defined $charblock) {
+        warn("No character block for codepoint: $codepoint\n");
+        if (!-t 1) {
+            print("\n");
+        }
+        return;
+    }
+    printf("%s\n", $charblock);
+    return;
+    my ($short, $full, @other) = prop_value_aliases('block', $charblock);
+    printf("%s\n", $short);
 }
 
 sub Dumper {
