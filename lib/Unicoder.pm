@@ -13,7 +13,6 @@ use Encode qw(decode_utf8);
 use Sort::Naturally qw(nsort);
 use File::Path qw(make_path);
 use File::Basename qw(dirname);
-use LWP::UserAgent::Cached;
 use Text::Wrap qw();
 use List::Util qw(max);
 
@@ -475,8 +474,8 @@ sub search {
                 my $charinfo = charinfo($codepoint);
                 my $charname = $charinfo->{name};
                 my $charname10 = $charinfo->{unicode10};
-                $charname   = undef if $charname   !~ m{\S};
-                $charname10 = undef if $charname10 !~ m{\S};
+                $charname   = undef if defined $charname && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname && $charname10 !~ m{\S};
                 next codepoint if !defined $charname;
                 my $codepointMatches = 0;
                 my $weight = 0;
@@ -859,7 +858,25 @@ sub fetchNamesList {
     my $url = 'https://unicode.org/Public/UNIDATA/NamesList.txt';
     my $cacheDir = $self->directory . '/' . 'cache';
     make_path($cacheDir);
-    my $ua = LWP::UserAgent::Cached->new(cache_dir => $cacheDir);
+
+    my $ua;
+
+    eval {
+        require LWP::UserAgent::Cached;
+        my $ua = LWP::UserAgent::Cached->new(cache_dir => $cacheDir);
+    };
+    if ($@) {
+        eval {
+            require LWP::UserAgent;
+            my $ua = LWP::UserAgent->new(cache_dir => $cacheDir);
+            warn("NOTICE: Please install LWP::UserAgent::Cached if you want caching.\n");
+        };
+    }
+    if ($@) {
+        warn("Neither LWP::UserAgent::Cached nor LWP::UserAgent found.\n");
+        warn("Please install one of them, preferably the former.\n");
+    }
+
     warn("Fetching $url ...\n");
     my $response = $ua->get($url);
     warn("    Done.\n");
