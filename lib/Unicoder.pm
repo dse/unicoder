@@ -475,8 +475,8 @@ sub search {
                 my $charinfo = charinfo($codepoint);
                 my $charname = $charinfo->{name};
                 my $charname10 = $charinfo->{unicode10};
-                $charname   = undef if $charname   !~ m{\S};
-                $charname10 = undef if $charname10 !~ m{\S};
+                $charname   = undef if defined $charname   && $charname   !~ m{\S};
+                $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
                 next codepoint if !defined $charname;
                 my $codepointMatches = 0;
                 my $weight = 0;
