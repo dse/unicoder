@@ -5,9 +5,10 @@ use open qw(locale);
 use feature qw(state);
 use utf8;
 
-use Unicode::UCD qw(charblocks charinfo);
+use Unicode::UCD qw(charblocks charinfo charprops_all prop_aliases prop_value_aliases);
 use Data::Dumper qw(Dumper);
 use HTML::Entities qw(encode_entities);
+use charnames qw();
 
 main(@ARGV);
 
@@ -16,6 +17,8 @@ sub main {
     if (!defined $cmd) {
         die("command not specified\n");
     }
+
+    my $result;
 
     my $cmdTyped = $cmd;
     $cmd =~ s{-[a-z]}{uc(substr($&, 1))}ge;
@@ -53,9 +56,25 @@ sub main {
         init();
         printCharactersInAlmostAllBlocks();
     } elsif ($cmd eq 'entities') {
+        init();
         printCharactersInRange(0, 0x2fff, entitiesOnly => 1);
+    } elsif ($cmd eq 'chr' || $cmd eq 'char' || $cmd eq 'character') {
+        if (!scalar @args) {
+            die("not enough arguments\n");
+        }
+        init();
+        foreach my $arg (@args) {
+            printCharacterInfo($arg);
+        }
     } else {
-        die("command not found: $cmdTyped\n");
+        init();
+        if (defined(parseBlockName($cmdTyped))) {
+            printCharactersInBlock($cmdTyped);
+        } elsif (defined(parseCodepoint($cmd))) {
+            printCharacterInfo($cmd);
+        } else {
+            die("command not found: $cmdTyped\n");
+        }
     }
 }
 
@@ -92,6 +111,8 @@ our $charblocks;
 
 sub init {
     $charblocks = charblocks();
+    my $version = Unicode::UCD::UnicodeVersion();
+    printf("Unicode version %s\n", $version);
 }
 
 sub listMostBlocks {
@@ -267,9 +288,9 @@ sub printCharacterRow {
 
     my $charinfo = charinfo($codepoint);
     my $charname = eval { $charinfo->{name}; };
-    my $entity = encode_entities(chr($codepoint));
 
     if ($options{entitiesOnly}) {
+        my $entity = encode_entities(chr($codepoint));
         if (!defined $charinfo) {
             # normally we display only the codepoint
             return 0;
@@ -294,15 +315,131 @@ sub printCharacterRow {
         }
     }
 
-    # display blank if no entity
-    if (defined $entity && $entity eq chr($codepoint)) {
-        $entity = '';
-    }
+    my $extras = getCharacterExtras($codepoint);
+    my $entity = $extras->{entity};
+    my $displayChar = $extras->{displayChar};
 
     # codepoint but no character
     if (!defined $charinfo) {
         printf("%8d  %-8s\n", $codepoint, uPlus($codepoint));
         return 1;
+    }
+
+    printf("%8d  %-8s  %-10s  %-6s  %s\n",
+           $codepoint,
+           uPlus($codepoint),
+           $entity // '<n/a>',
+           $displayChar // '<n/a>',
+           $charinfo->{name} // '<no name>');
+    return 1;
+}
+
+our $charinfoProperties;
+our $decomposeProperties;
+BEGIN {
+    $charinfoProperties = {
+        'bidi' => 'Bidi_Class',
+        'category' => 'General_Category',
+    };
+    $decomposeProperties = {
+        'Case_Folding' => 1,
+        'Decomposition_Mapping' => 1,
+        'Lowercase_Mapping' => 1,
+        'NFKC_Casefold' => 1,
+        'Simple_Case_Folding' => 1,
+        'Simple_Lowercase_Mapping' => 1,
+        'Simple_Titlecase_Mapping' => 1,
+        'Simple_Uppercase_Mapping' => 1,
+        'Titlecase_Mapping' => 1,
+        'Uppercase_Mapping' => 1,
+    };
+}
+
+sub printCharacterInfo {
+    my ($codepoint) = @_;
+    $codepoint = parseCodepoint($codepoint);
+
+    # skip surrogates entirely
+    if ($codepoint >= 0xd800 && $codepoint <= 0xdfff) {
+        return 0;
+    }
+
+    my $charinfo = charinfo($codepoint);
+    if (!defined $charinfo) {
+        return 0;
+    }
+
+    my $extras = getCharacterExtras($codepoint);
+    my $entity = $extras->{entity};
+    my $displayChar = $extras->{displayChar};
+    my $props = charprops_all($codepoint);
+
+    print("\n");
+    printf("%-30s  %-46s\n", '#' . ('=' x 29), ('=' x 46));
+    printf("%-30s  %s\n", 'decimal code', $codepoint);
+    printf("%-30s  %s\n", 'hexadecimal code', uPlus($codepoint));
+    printf("%-30s  %s\n", 'html entity', $entity // '<n/a>');
+    printf("%-30s  %s\n", 'character', $displayChar // '<n/a>');
+
+    printf("%-30s  %-46s\n", '#' . ('-' x 29), ('-' x 46));
+
+    foreach my $key (sort { lc($a) cmp lc($b) } keys(%$charinfo)) {
+        my $value = $charinfo->{$key};
+        printf("%-30s  %s\n", $key, $value);
+
+        my $prop = $charinfoProperties->{$key};
+        if (defined $prop) {
+            printf("    %-26s  %s\n", $prop, $props->{$prop});
+        }
+    }
+
+    printf("%-30s  %-18s  %-26s\n", '#' . ('-' x 29), ('-' x 18), ('-' x 26));
+
+    foreach my $propName (sort { lc($a) cmp lc($b) } keys(%$props)) {
+        my $propValue = $props->{$propName};
+        my ($shortPropName, $fullPropName, @otherPropNames) = prop_aliases($propName);
+        my @propValueNames = prop_value_aliases($propName, $propValue);
+        my ($shortPropValueName, $fullPropValueName, @otherPropValueNames) = @propValueNames;
+        my $propValueNames = join(", ", sort { $a cmp $b } @propValueNames);
+        printf("%-30s  %-18s  %s", $propName, $shortPropName // '', $propValue);
+        if ($propValueNames ne 'None, n' &&
+            $propValueNames ne 'F, False, N, No' &&
+            $propValueNames ne 'N, No' &&
+            $propValueNames ne 'T, True, Y, Yes' &&
+            $propValueNames ne 'Y, Yes') {
+            printf(" [%s]", $shortPropValueName) if defined $shortPropValueName &&  $shortPropValueName ne $propValue;
+            foreach my $otherPropValueName (@otherPropValueNames) {
+                printf(" [%s]", $otherPropValueName);
+            }
+            if ($decomposeProperties->{$propName}) {
+                my @chars = split('', $propValue);
+                my @codepoints = map { ord($_) } @chars;
+                my @uPlus = map { uPlus(ord($_)) } @chars;
+                printf(" { %s }", join(' ', @uPlus));
+                foreach my $codepoint (@codepoints) {
+                    printf("\n%-54s{ %s %s }", '',
+                           uPlus($codepoint), charnames::viacode($codepoint));
+                }
+            }
+        }
+        print("\n");
+        foreach my $otherPropName (@otherPropNames) {
+            printf("    [%s]\n", $otherPropName);
+        }
+    }
+}
+
+sub getCharacterExtras {
+    my ($codepoint) = @_;
+    my $charinfo = charinfo($codepoint);
+    my $charname = eval { $charinfo->{name}; };
+
+    my $entity = encode_entities(chr($codepoint));
+    if ($codepoint != 39) {
+        # display blank if no entity
+        if (defined $entity && $entity eq chr($codepoint)) {
+            $entity = '';
+        }
     }
 
     my $displayChar = chr($codepoint);
@@ -325,13 +462,10 @@ sub printCharacterRow {
         $displayChar = undef;
     }
 
-    printf("%8d  %-8s  %-10s  %-6s  %s\n",
-           $codepoint,
-           uPlus($codepoint),
-           $entity // '<n/a>',
-           $displayChar // '<n/a>',
-           $charinfo->{name} // '<no name>');
-    return 1;
+    return {
+        displayChar => $displayChar,
+        entity => $entity,
+    };
 }
 
 sub uPlus {
