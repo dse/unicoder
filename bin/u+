@@ -73,14 +73,14 @@ BEGIN {
     $excludeBlocksB = {
         'CJK Unified Ideographs Extension A' => 1,      #  6592 codepoints starting at U+3400
         'CJK Unified Ideographs' => 1,                  # 20992 codepoints starting at U+4E00
+        'CJK Compatibility Ideographs' => 1,            #   512 codepoints starting at U+F900
         'CJK Unified Ideographs Extension B' => 1,      # 42720 codepoints starting at U+20000
         'CJK Unified Ideographs Extension C' => 1,      #  4160 codepoints starting at U+2A700
         'CJK Unified Ideographs Extension D' => 1,      #   224 codepoints starting at U+2B740
         'CJK Unified Ideographs Extension E' => 1,      #  5776 codepoints starting at U+2B820
         'CJK Unified Ideographs Extension F' => 1,      #  7488 codepoints starting at U+2CEB0
-        'CJK Unified Ideographs Extension G' => 1,      #  4944 codepoints starting at U+30000
-        'CJK Compatibility Ideographs' => 1,            #   512 codepoints starting at U+F900
         'CJK Compatibility Ideographs Supplement' => 1, #   544 codepoints starting at U+2F800
+        'CJK Unified Ideographs Extension G' => 1,      #  4944 codepoints starting at U+30000
         'Hangul Syllables' => 1,
         'Tangut' => 1,
     };
