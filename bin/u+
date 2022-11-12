@@ -18,9 +18,15 @@ sub main {
 
     my $cmdTyped = $cmd;
     $cmd =~ s{-[a-z]}{uc(substr($&, 1))}ge;
-    if ($cmd eq 'blocks') {
+    if ($cmd eq 'blocks' || $cmd eq 'listBlocks' || $cmd eq 'listAllBlocks') {
         init();
         blocks();
+    } elsif ($cmd eq 'listMostBlocks') {
+        init();
+        listMostBlocks();
+    } elsif ($cmd eq 'listAlmostAllBlocks') {
+        init();
+        listAlmostAllBlocks();
     } elsif ($cmd eq 'block') {
         if (!scalar @args) {
             die("not enough arguments\n");
@@ -45,12 +51,6 @@ sub main {
     } elsif ($cmd eq 'almostAllBlocks') {
         init();
         almostAllBlocks();
-    } elsif ($cmd eq 'listMostBlocks') {
-        init();
-        listMostBlocks();
-    } elsif ($cmd eq 'listAlmostAllBlocks') {
-        init();
-        listAlmostAllBlocks();
     } else {
         die("command not found: $cmdTyped\n");
     }
@@ -116,17 +116,6 @@ sub blocks {
     printBlockFooter($count);
 }
 
-sub printBlockHeading {
-    print("#Low      High      Count   Hex Low   Hex High  Name\n");
-    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
-}
-
-sub printBlockFooter {
-    my ($count) = @_;
-    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
-    printf("%-18s  %6d\n", '#', $count);
-}
-
 sub almostAllBlocks {
     my ($excludeCJK) = @_;
     my @blockNames = keys %$charblocks;
@@ -182,11 +171,6 @@ sub range {
     }
 }
 
-sub printCharacterHeading {
-    print("#Decimal    Hex         Entity      Char    Name\n");
-    print("#-------    --------    --------    ----    ----------------------------------------\n");
-}
-
 sub toCodepoint {
     my ($spec) = @_;
     my $codepoint = parseCodepoint($spec);
@@ -233,6 +217,17 @@ sub parseBlockName {
     return;
 }
 
+sub printBlockHeading {
+    print("#Low      High      Count   Hex Low   Hex High  Name\n");
+    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
+}
+
+sub printBlockFooter {
+    my ($count) = @_;
+    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
+    printf("%-18s  %6d\n", '#', $count);
+}
+
 sub printBlockRow {
     my ($blockName) = @_;
     my $block = $charblocks->{$blockName};
@@ -247,6 +242,11 @@ sub printBlockRow {
         printf("%8d  %8d  %6d  %-8s  %-8s  %s\n", $low, $high, $high - $low + 1, $lowHex, $highHex, $first ? $blockName : '"');
     }
     return $count;
+}
+
+sub printCharacterHeading {
+    print("#Decimal    Hex         Entity      Char    Name\n");
+    print("#-------    --------    --------    ----    ----------------------------------------\n");
 }
 
 sub printCharacterRow {
