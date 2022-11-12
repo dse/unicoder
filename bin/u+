@@ -63,28 +63,26 @@ our $excludeBlocksB;
 
 BEGIN {
     $excludeBlocksA = {
-        'High Surrogates' => 1,
-        'High Private Use Surrogates' => 1,
-        'Low Surrogates' => 1,
-        'Private Use Area' => 1,
-        'Supplementary Private Use Area-A' => 1,
-        'Supplementary Private Use Area-B' => 1,
-        'Tags' => 1,
-        'Variation Selectors Supplement' => 1,
+        'High Surrogates' => 1,                         #   896 codepoints starting at U+D800
+        'High Private Use Surrogates' => 1,             #   128 codepoints starting at U+DB80
+        'Low Surrogates' => 1,                          #  1024 codepoints starting at U+DC00
+        'Private Use Area' => 1,                        #  6400 codepoints starting at U+E000
+        'Supplementary Private Use Area-A' => 1,        # 65536 codepoints starting at U+F0000
+        'Supplementary Private Use Area-B' => 1,        # 65536 codepoints starting at U+100000
     };
     $excludeBlocksB = {
-        'CJK Unified Ideographs Extension A' => 1,
-        'CJK Unified Ideographs' => 1,
+        'CJK Unified Ideographs Extension A' => 1,      #  6592 codepoints starting at U+3400
+        'CJK Unified Ideographs' => 1,                  # 20992 codepoints starting at U+4E00
+        'CJK Unified Ideographs Extension B' => 1,      # 42720 codepoints starting at U+20000
+        'CJK Unified Ideographs Extension C' => 1,      #  4160 codepoints starting at U+2A700
+        'CJK Unified Ideographs Extension D' => 1,      #   224 codepoints starting at U+2B740
+        'CJK Unified Ideographs Extension E' => 1,      #  5776 codepoints starting at U+2B820
+        'CJK Unified Ideographs Extension F' => 1,      #  7488 codepoints starting at U+2CEB0
+        'CJK Unified Ideographs Extension G' => 1,      #  4944 codepoints starting at U+30000
+        'CJK Compatibility Ideographs' => 1,            #   512 codepoints starting at U+F900
+        'CJK Compatibility Ideographs Supplement' => 1, #   544 codepoints starting at U+2F800
         'Hangul Syllables' => 1,
         'Tangut' => 1,
-        'CJK Unified Ideographs Extension B' => 1,
-        'CJK Unified Ideographs Extension C' => 1,
-        'CJK Unified Ideographs Extension D' => 1,
-        'CJK Unified Ideographs Extension E' => 1,
-        'CJK Unified Ideographs Extension F' => 1,
-        'CJK Unified Ideographs Extension G' => 1,
-        'CJK Compatibility Ideographs' => 1,
-        'CJK Compatibility Ideographs Supplement' => 1,
     };
 }
 
@@ -308,7 +306,7 @@ sub printCharacterRow {
     my $displayChar = chr($codepoint);
 
     # control characters
-    if ($charname eq '<control>' ||
+    if ((defined $charname && $charname eq '<control>') ||
         $codepoint >= 0 && $codepoint <= 31 ||
         $codepoint >= 127 && $codepoint <= 159) {
         $displayChar = undef;
