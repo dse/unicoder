@@ -20,7 +20,7 @@ sub main {
     $cmd =~ s{-[a-z]}{uc(substr($&, 1))}ge;
     if ($cmd eq 'blocks' || $cmd eq 'listBlocks' || $cmd eq 'listAllBlocks') {
         init();
-        blocks();
+        listBlocks();
     } elsif ($cmd eq 'listMostBlocks') {
         init();
         listMostBlocks();
@@ -33,24 +33,26 @@ sub main {
         }
         init();
         foreach my $block (@args) {
-            block($block);
+            printCharactersInBlock($block);
         }
     } elsif ($cmd eq 'bmp') {
         init();
-        range(0, 65535);
+        printCharactersInRange(0, 65535);
     } elsif ($cmd eq 'range') {
         if (scalar @args < 2) {
             die("not enough arguments\n");
         }
         init();
         my ($from, $to) = @args;
-        range($from, $to);
+        printCharactersInRange($from, $to);
     } elsif ($cmd eq 'mostBlocks') {
         init();
-        mostBlocks();
+        printCharactersInMostBlocks();
     } elsif ($cmd eq 'almostAllBlocks') {
         init();
-        almostAllBlocks();
+        printCharactersInAlmostAllBlocks();
+    } elsif ($cmd eq 'entities') {
+        printCharactersInRange(0, 0x2fff, entitiesOnly => 1);
     } else {
         die("command not found: $cmdTyped\n");
     }
@@ -93,16 +95,16 @@ sub init {
 }
 
 sub listMostBlocks {
-    blocks(2);
+    listBlocks(exclusionLevel => 2);
 }
 
 sub listAlmostAllBlocks {
-    blocks(1);
+    listBlocks(exclusionLevel => 1);
 }
 
-sub blocks {
-    my ($exclusionLevel) = @_;
-    $exclusionLevel //= 0 ;
+sub listBlocks {
+    my (%options) = @_;
+    my $exclusionLevel = $options{exclusionLevel} // 0;
 
     my @blockNames = keys %$charblocks;
     @blockNames = sort { $charblocks->{$a}->[0]->[0] <=> $charblocks->{$b}->[0]->[0] } @blockNames;
@@ -116,23 +118,29 @@ sub blocks {
     printBlockFooter($count);
 }
 
-sub almostAllBlocks {
-    my ($excludeCJK) = @_;
+sub printCharactersInAllBlocks {
+    my (%options) = @_;
+    my $exclusionLevel = $options{exclusionLevel} // 0;
+
     my @blockNames = keys %$charblocks;
     @blockNames = sort { $charblocks->{$a}->[0]->[0] <=> $charblocks->{$b}->[0]->[0] } @blockNames;
     my $totalCount = 0;
     foreach my $blockName (@blockNames) {
-        next if $excludeCJK && $excludeBlocksB->{$blockName};
-        next if $excludeBlocksA->{$blockName};
-        $totalCount += block($blockName);
+        next if $exclusionLevel >= 1 && $excludeBlocksA->{$blockName};
+        next if $exclusionLevel >= 2 && $excludeBlocksB->{$blockName};
+        $totalCount += printCharactersInBlock($blockName);
     }
 }
 
-sub mostBlocks {
-    almostAllBlocks(1);
+sub printCharactersInAlmostAllBlocks {
+    printCharactersInAllBlocks(exclusionLevel => 1);
 }
 
-sub block {
+sub printCharactersInMostBlocks {
+    printCharactersInAllBlocks(exclusionLevel => 2);
+}
+
+sub printCharactersInBlock {
     my ($spec) = @_;
     my $blockName = toBlockName($spec);
     if (!defined $blockName) {
@@ -155,8 +163,8 @@ sub block {
     return $count;
 }
 
-sub range {
-    my ($from, $to) = @_;
+sub printCharactersInRange {
+    my ($from, $to, %options) = @_;
     my $codepointFrom = parseCodepoint($from);
     if (!defined $codepointFrom) {
         die("not a codepoint: $from\n");
@@ -167,7 +175,7 @@ sub range {
     }
     printCharacterHeading();
     foreach my $codepoint ($codepointFrom .. $codepointTo) {
-        printCharacterRow($codepoint);
+        printCharacterRow($codepoint, %options);
     }
 }
 
@@ -245,46 +253,84 @@ sub printBlockRow {
 }
 
 sub printCharacterHeading {
-    print("#Decimal    Hex         Entity      Char    Name\n");
-    print("#-------    --------    --------    ----    ----------------------------------------\n");
+    print("#Decimal  Hex       Entity      Char    Name\n");
+    print("#-------  --------  ----------  ------  ----------------------------------------\n");
 }
 
 sub printCharacterRow {
-    my ($codepoint) = @_;
+    my ($codepoint, %options) = @_;
+
+    # skip surrogates entirely
     if ($codepoint >= 0xd800 && $codepoint <= 0xdfff) {
         return 0;
     }
-    my $chr = chr($codepoint);
-    if ($codepoint >= 0 && $codepoint <= 31 || $codepoint >= 127 && $codepoint <= 159) {
-        $chr = undef;
-    }
+
+    my $charinfo = charinfo($codepoint);
+    my $charname = eval { $charinfo->{name}; };
     my $entity = encode_entities(chr($codepoint));
+
+    if ($options{entitiesOnly}) {
+        if (!defined $charinfo) {
+            # normally we display only the codepoint
+            return 0;
+        }
+        if (!defined $charname) {
+            # normally we display <no name>
+            return 0;
+        }
+        if (!defined $entity) {
+            return 0;
+        }
+        if ($codepoint != 39) { # we need to include &#39; when displaying entities only
+            if ($entity eq '') {
+                return 0;
+            }
+            if ($entity =~ m{^&#}) {
+                return 0;
+            }
+            if ($entity eq chr($codepoint)) {
+                return 0;
+            }
+        }
+    }
+
+    # display blank if no entity
     if (defined $entity && $entity eq chr($codepoint)) {
         $entity = '';
     }
-    my $charinfo = charinfo($codepoint);
+
+    # codepoint but no character
     if (!defined $charinfo) {
-        printf("%8d    %-8s\n", $codepoint, uPlus($codepoint));
+        printf("%8d  %-8s\n", $codepoint, uPlus($codepoint));
         return 1;
     }
-    my $displayChar = $chr;
+
+    my $displayChar = chr($codepoint);
+
+    # control characters
+    if ($charname eq '<control>' ||
+        $codepoint >= 0 && $codepoint <= 31 ||
+        $codepoint >= 127 && $codepoint <= 159) {
+        $displayChar = undef;
+    }
+
+    # other specific characters
     if ($codepoint == 0x202a || $codepoint == 0x202b ||
         $codepoint == 0x202d || $codepoint == 0x202e ||
         $codepoint == 0x2065 || $codepoint == 0x2066 ||
-        $codepoint == 0x2067) {
+        $codepoint == 0x2067 ||
+        $codepoint == 0x2069 ||
+        $codepoint == 0x2029 ||
+        $codepoint == 0x202C) {
         $displayChar = undef;
     }
-    my $charname = $charinfo->{name};
-    if ($charname eq '<control>') {
-        $displayChar = '';
-    }
-    printf("%8d    %-8s    %-10s  %-6s  %s\n",
+
+    printf("%8d  %-8s  %-10s  %-6s  %s\n",
            $codepoint,
            uPlus($codepoint),
            $entity // '<n/a>',
            $displayChar // '<n/a>',
            $charinfo->{name} // '<no name>');
-    my $unicode10 = $charinfo->{unicode10};
     return 1;
 }
 
