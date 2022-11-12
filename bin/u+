@@ -1,0 +1,316 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use open qw(locale);
+use feature qw(state);
+
+use Unicode::UCD qw(charblocks charinfo);
+use Data::Dumper qw(Dumper);
+use HTML::Entities qw(encode_entities);
+
+main(@ARGV);
+
+sub main {
+    my ($cmd, @args) = @_;
+    if (!defined $cmd) {
+        die("command not specified\n");
+    }
+
+    my $cmdTyped = $cmd;
+    $cmd =~ s{-[a-z]}{uc(substr($&, 1))}ge;
+    if ($cmd eq 'blocks') {
+        init();
+        blocks();
+    } elsif ($cmd eq 'block') {
+        if (!scalar @args) {
+            die("not enough arguments\n");
+        }
+        init();
+        foreach my $block (@args) {
+            block($block);
+        }
+    } elsif ($cmd eq 'bmp') {
+        init();
+        range(0, 65535);
+    } elsif ($cmd eq 'range') {
+        if (scalar @args < 2) {
+            die("not enough arguments\n");
+        }
+        init();
+        my ($from, $to) = @args;
+        range($from, $to);
+    } elsif ($cmd eq 'mostBlocks') {
+        init();
+        mostBlocks();
+    } elsif ($cmd eq 'almostAllBlocks') {
+        init();
+        almostAllBlocks();
+    } elsif ($cmd eq 'listMostBlocks') {
+        init();
+        listMostBlocks();
+    } elsif ($cmd eq 'listAlmostAllBlocks') {
+        init();
+        listAlmostAllBlocks();
+    } else {
+        die("command not found: $cmdTyped\n");
+    }
+}
+
+our $excludeBlocksA;
+our $excludeBlocksB;
+
+BEGIN {
+    $excludeBlocksA = {
+        'High Surrogates' => 1,
+        'High Private Use Surrogates' => 1,
+        'Low Surrogates' => 1,
+        'Private Use Area' => 1,
+        'Supplementary Private Use Area-A' => 1,
+        'Supplementary Private Use Area-B' => 1,
+        'Tags' => 1,
+        'Variation Selectors Supplement' => 1,
+    };
+    $excludeBlocksB = {
+        'CJK Unified Ideographs Extension A' => 1,
+        'CJK Unified Ideographs' => 1,
+        'Hangul Syllables' => 1,
+        'Tangut' => 1,
+        'CJK Unified Ideographs Extension B' => 1,
+        'CJK Unified Ideographs Extension C' => 1,
+        'CJK Unified Ideographs Extension D' => 1,
+        'CJK Unified Ideographs Extension E' => 1,
+        'CJK Unified Ideographs Extension F' => 1,
+        'CJK Unified Ideographs Extension G' => 1,
+        'CJK Compatibility Ideographs' => 1,
+        'CJK Compatibility Ideographs Supplement' => 1,
+    };
+}
+
+our $charblocks;
+
+sub init {
+    $charblocks = charblocks();
+}
+
+sub listMostBlocks {
+    blocks(2);
+}
+
+sub listAlmostAllBlocks {
+    blocks(1);
+}
+
+sub blocks {
+    my ($exclusionLevel) = @_;
+    $exclusionLevel //= 0 ;
+
+    my @blockNames = keys %$charblocks;
+    @blockNames = sort { $charblocks->{$a}->[0]->[0] <=> $charblocks->{$b}->[0]->[0] } @blockNames;
+    printBlockHeading();
+    my $count = 0;
+    foreach my $blockName (@blockNames) {
+        next if $exclusionLevel >= 1 && $excludeBlocksA->{$blockName};
+        next if $exclusionLevel >= 2 && $excludeBlocksB->{$blockName};
+        $count += printBlockRow($blockName);
+    }
+    printBlockFooter($count);
+}
+
+sub printBlockHeading {
+    print("#Low      High      Count   Hex Low   Hex High  Name\n");
+    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
+}
+
+sub printBlockFooter {
+    my ($count) = @_;
+    print("#-------  --------  ------  --------  --------  ----------------------------------------\n");
+    printf("%-18s  %6d\n", '#', $count);
+}
+
+sub almostAllBlocks {
+    my ($excludeCJK) = @_;
+    my @blockNames = keys %$charblocks;
+    @blockNames = sort { $charblocks->{$a}->[0]->[0] <=> $charblocks->{$b}->[0]->[0] } @blockNames;
+    my $totalCount = 0;
+    foreach my $blockName (@blockNames) {
+        next if $excludeCJK && $excludeBlocksB->{$blockName};
+        next if $excludeBlocksA->{$blockName};
+        $totalCount += block($blockName);
+    }
+}
+
+sub mostBlocks {
+    almostAllBlocks(1);
+}
+
+sub block {
+    my ($spec) = @_;
+    my $blockName = toBlockName($spec);
+    if (!defined $blockName) {
+        die(sprintf("%s: no such block\n", $spec));
+    }
+    my $block = $charblocks->{$blockName};
+    if (!defined $block) {
+        die(sprintf("%s: no such block\n", $spec));
+    }
+    print("# $blockName\n");
+    printCharacterHeading();
+    my $count = 0;
+    foreach my $range (@$block) {
+        my $low = $range->[0];
+        my $high = $range->[1];
+        foreach my $codepoint ($low .. $high) {
+            $count += printCharacterRow($codepoint);
+        }
+    }
+    return $count;
+}
+
+sub range {
+    my ($from, $to) = @_;
+    my $codepointFrom = parseCodepoint($from);
+    if (!defined $codepointFrom) {
+        die("not a codepoint: $from\n");
+    }
+    my $codepointTo = parseCodepoint($to);
+    if (!defined $codepointTo) {
+        die("not a codepoint: $to\n");
+    }
+    printCharacterHeading();
+    foreach my $codepoint ($codepointFrom .. $codepointTo) {
+        printCharacterRow($codepoint);
+    }
+}
+
+sub printCharacterHeading {
+    print("#Decimal    Hex         Entity      Char    Name\n");
+    print("#-------    --------    --------    ----    ----------------------------------------\n");
+}
+
+sub toCodepoint {
+    my ($spec) = @_;
+    my $codepoint = parseCodepoint($spec);
+    if (defined $codepoint) {
+        return $codepoint;
+    }
+    return;
+}
+
+sub toBlockName {
+    my ($spec) = @_;
+    my $blockName = parseBlockName($spec);
+    if (defined $blockName) {
+        return $blockName;
+    }
+    my $codepoint = toCodepoint($spec);
+    if (defined $codepoint) {
+        my $charinfo = charinfo($codepoint);
+        if (!defined $charinfo) {
+            return;
+        }
+        return $charinfo->{block};
+    }
+    return;
+}
+
+sub parseCodepoint {
+    my ($codepoint) = @_;
+    if ($codepoint =~ m{^(?:u\+?|\+|0?x)(?<hex>[[:xdigit:]]+)$}i) {
+        return hex($+{hex});
+    }
+    if ($codepoint =~ m{^\d+$}) {
+        return 0 + $codepoint;
+    }
+    return;
+}
+
+sub parseBlockName {
+    my ($blockName) = @_;
+    $blockName = normalizeBlockName($blockName);
+    if (defined $blockName) {
+        return $blockName;
+    }
+    return;
+}
+
+sub printBlockRow {
+    my ($blockName) = @_;
+    my $block = $charblocks->{$blockName};
+    my $count = 0;
+    foreach my $range (@$block) {
+        my $first = $range == $block->[0];
+        my $low = $range->[0];
+        my $high = $range->[1];
+        my $lowHex = uPlus($low);
+        my $highHex = uPlus($high);
+        $count += $high - $low + 1;
+        printf("%8d  %8d  %6d  %-8s  %-8s  %s\n", $low, $high, $high - $low + 1, $lowHex, $highHex, $first ? $blockName : '"');
+    }
+    return $count;
+}
+
+sub printCharacterRow {
+    my ($codepoint) = @_;
+    if ($codepoint >= 0xd800 && $codepoint <= 0xdfff) {
+        return 0;
+    }
+    my $chr = chr($codepoint);
+    if ($codepoint >= 0 && $codepoint <= 31 || $codepoint >= 127 && $codepoint <= 159) {
+        $chr = undef;
+    }
+    my $entity = encode_entities(chr($codepoint));
+    if (defined $entity && $entity eq chr($codepoint)) {
+        $entity = '';
+    }
+    my $charinfo = charinfo($codepoint);
+    if (!defined $charinfo) {
+        printf("%8d    %-8s\n", $codepoint, uPlus($codepoint));
+        return 1;
+    }
+    my $displayChar = $chr;
+    if ($codepoint == 0x202a || $codepoint == 0x202b ||
+        $codepoint == 0x202d || $codepoint == 0x202e ||
+        $codepoint == 0x2065 || $codepoint == 0x2066 ||
+        $codepoint == 0x2067) {
+        $displayChar = undef;
+    }
+    my $charname = $charinfo->{name};
+    if ($charname eq '<control>') {
+        $displayChar = '';
+    }
+    printf("%8d    %-8s    %-10s  %-6s  %s\n",
+           $codepoint,
+           uPlus($codepoint),
+           $entity // '<n/a>',
+           $displayChar // '<n/a>',
+           $charinfo->{name} // '<no name>');
+    my $unicode10 = $charinfo->{unicode10};
+    return 1;
+}
+
+sub uPlus {
+    my ($codepoint) = @_;
+    return sprintf('U+%04X', $codepoint);
+}
+
+sub normalizeBlockName {
+    my ($spec) = @_;
+    if (exists $charblocks->{$spec}) {
+        return $spec;
+    }
+    $spec = blockNameForCmp($spec);
+    foreach my $blockName (keys %$charblocks) {
+        my $k = blockNameForCmp($blockName);
+        if ($spec eq $k) {
+            return $blockName;
+        }
+    }
+    return;
+}
+
+sub blockNameForCmp {
+    my ($spec) = @_;
+    $spec = lc($spec);
+    $spec =~ s{[^A-Za-z0-9]}{}g;
+    return $spec;
+}
