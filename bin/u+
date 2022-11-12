@@ -63,26 +63,26 @@ our $excludeBlocksB;
 
 BEGIN {
     $excludeBlocksA = {
-        'High Surrogates' => 1,                         #   896 codepoints starting at U+D800
-        'High Private Use Surrogates' => 1,             #   128 codepoints starting at U+DB80
-        'Low Surrogates' => 1,                          #  1024 codepoints starting at U+DC00
-        'Private Use Area' => 1,                        #  6400 codepoints starting at U+E000
-        'Supplementary Private Use Area-A' => 1,        # 65536 codepoints starting at U+F0000
-        'Supplementary Private Use Area-B' => 1,        # 65536 codepoints starting at U+100000
+        'High Surrogates'                         => 1, #   896 codepoints starting at U+D800
+        'High Private Use Surrogates'             => 1, #   128 codepoints starting at U+DB80
+        'Low Surrogates'                          => 1, #  1024 codepoints starting at U+DC00
+        'Private Use Area'                        => 1, #  6400 codepoints starting at U+E000
+        'Supplementary Private Use Area-A'        => 1, # 65536 codepoints starting at U+F0000
+        'Supplementary Private Use Area-B'        => 1, # 65536 codepoints starting at U+100000
     };
     $excludeBlocksB = {
-        'CJK Unified Ideographs Extension A' => 1,      #  6592 codepoints starting at U+3400
-        'CJK Unified Ideographs' => 1,                  # 20992 codepoints starting at U+4E00
-        'Hangul Syllables' => 1,                        # 11184 codepoints starting at U+AC00
-        'CJK Compatibility Ideographs' => 1,            #   512 codepoints starting at U+F900
-        'Tangut' => 1,                                  #  6144 codepoints starting at U+17000
-        'CJK Unified Ideographs Extension B' => 1,      # 42720 codepoints starting at U+20000
-        'CJK Unified Ideographs Extension C' => 1,      #  4160 codepoints starting at U+2A700
-        'CJK Unified Ideographs Extension D' => 1,      #   224 codepoints starting at U+2B740
-        'CJK Unified Ideographs Extension E' => 1,      #  5776 codepoints starting at U+2B820
-        'CJK Unified Ideographs Extension F' => 1,      #  7488 codepoints starting at U+2CEB0
+        'CJK Unified Ideographs Extension A'      => 1, #  6592 codepoints starting at U+3400
+        'CJK Unified Ideographs'                  => 1, # 20992 codepoints starting at U+4E00
+        'Hangul Syllables'                        => 1, # 11184 codepoints starting at U+AC00
+        'CJK Compatibility Ideographs'            => 1, #   512 codepoints starting at U+F900
+        'Tangut'                                  => 1, #  6144 codepoints starting at U+17000
+        'CJK Unified Ideographs Extension B'      => 1, # 42720 codepoints starting at U+20000
+        'CJK Unified Ideographs Extension C'      => 1, #  4160 codepoints starting at U+2A700
+        'CJK Unified Ideographs Extension D'      => 1, #   224 codepoints starting at U+2B740
+        'CJK Unified Ideographs Extension E'      => 1, #  5776 codepoints starting at U+2B820
+        'CJK Unified Ideographs Extension F'      => 1, #  7488 codepoints starting at U+2CEB0
         'CJK Compatibility Ideographs Supplement' => 1, #   544 codepoints starting at U+2F800
-        'CJK Unified Ideographs Extension G' => 1,      #  4944 codepoints starting at U+30000
+        'CJK Unified Ideographs Extension G'      => 1, #  4944 codepoints starting at U+30000
     };
 }
 
