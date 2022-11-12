@@ -3,6 +3,7 @@ use warnings;
 use strict;
 use open qw(locale);
 use feature qw(state);
+use utf8;
 
 use Unicode::UCD qw(charblocks charinfo);
 use Data::Dumper qw(Dumper);
@@ -62,27 +63,28 @@ our $excludeBlocksA;
 our $excludeBlocksB;
 
 BEGIN {
+    #                                                   # count from     to
     $excludeBlocksA = {
-        'High Surrogates'                         => 1, #   896 codepoints starting at U+D800
-        'High Private Use Surrogates'             => 1, #   128 codepoints starting at U+DB80
-        'Low Surrogates'                          => 1, #  1024 codepoints starting at U+DC00
-        'Private Use Area'                        => 1, #  6400 codepoints starting at U+E000
-        'Supplementary Private Use Area-A'        => 1, # 65536 codepoints starting at U+F0000
-        'Supplementary Private Use Area-B'        => 1, # 65536 codepoints starting at U+100000
+        'High Surrogates'                         => 1, #   896 U+D800‥‥‥DB7F
+        'High Private Use Surrogates'             => 1, #   128 U+DB80‥‥‥DBFF
+        'Low Surrogates'                          => 1, #  1024 U+DC00‥‥‥DFFF
+        'Private Use Area'                        => 1, #  6400 U+E000‥‥‥F8FF
+        'Supplementary Private Use Area-A'        => 1, # 65536 U+F0000‥‥FFFFF
+        'Supplementary Private Use Area-B'        => 1, # 65536 U+100000‥10FFFF
     };
     $excludeBlocksB = {
-        'CJK Unified Ideographs Extension A'      => 1, #  6592 codepoints starting at U+3400
-        'CJK Unified Ideographs'                  => 1, # 20992 codepoints starting at U+4E00
-        'Hangul Syllables'                        => 1, # 11184 codepoints starting at U+AC00
-        'CJK Compatibility Ideographs'            => 1, #   512 codepoints starting at U+F900
-        'Tangut'                                  => 1, #  6144 codepoints starting at U+17000
-        'CJK Unified Ideographs Extension B'      => 1, # 42720 codepoints starting at U+20000
-        'CJK Unified Ideographs Extension C'      => 1, #  4160 codepoints starting at U+2A700
-        'CJK Unified Ideographs Extension D'      => 1, #   224 codepoints starting at U+2B740
-        'CJK Unified Ideographs Extension E'      => 1, #  5776 codepoints starting at U+2B820
-        'CJK Unified Ideographs Extension F'      => 1, #  7488 codepoints starting at U+2CEB0
-        'CJK Compatibility Ideographs Supplement' => 1, #   544 codepoints starting at U+2F800
-        'CJK Unified Ideographs Extension G'      => 1, #  4944 codepoints starting at U+30000
+        'CJK Unified Ideographs Extension A'      => 1, #  6592 U+3400‥‥‥4DBF
+        'CJK Unified Ideographs'                  => 1, # 20992 U+4E00‥‥‥9FFF
+        'Hangul Syllables'                        => 1, # 11184 U+AC00‥‥‥D7AF
+        'CJK Compatibility Ideographs'            => 1, #   512 U+F900‥‥‥FAFF
+        'Tangut'                                  => 1, #  6144 U+17000‥‥187FF
+        'CJK Unified Ideographs Extension B'      => 1, # 42720 U+20000‥‥2A6DF
+        'CJK Unified Ideographs Extension C'      => 1, #  4160 U+2A700‥‥2B73F
+        'CJK Unified Ideographs Extension D'      => 1, #   224 U+2B740‥‥2B81F
+        'CJK Unified Ideographs Extension E'      => 1, #  5776 U+2B820‥‥2CEAF
+        'CJK Unified Ideographs Extension F'      => 1, #  7488 U+2CEB0‥‥2EBEF
+        'CJK Compatibility Ideographs Supplement' => 1, #   544 U+2F800‥‥2FA1F
+        'CJK Unified Ideographs Extension G'      => 1, #  4944 U+30000‥‥3134F
     };
 }
 
