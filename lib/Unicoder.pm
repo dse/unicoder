@@ -519,8 +519,8 @@ sub printCharacterLine {
     my $charinfo = charinfo($codepoint);
     my $charname = $charinfo->{name};
     my $charname10 = $charinfo->{unicode10};
-    $charname   = undef if $charname   !~ m{\S};
-    $charname10 = undef if $charname10 !~ m{\S};
+    $charname   = undef if defined $charname && $charname   !~ m{\S};
+    $charname10 = undef if defined $charname && $charname10 !~ m{\S};
     my $displayName = join(' ', grep { defined $_ } (
         $charname,
         (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
