@@ -2,10 +2,26 @@
 use warnings;
 use strict;
 use Unicode::UCD qw(charblocks charinfo);
+use Getopt::Long;
+use String::Format qw(stringf);
+
+binmode(STDOUT, ':utf8');
+
+our $format;
+our $char;
+our $startchar,
+
+Getopt::Long::Configure(qw(gnu_getopt));
+Getopt::Long::GetOptions(
+    'f|format=s' => \$format,
+    'c|char' => \$char,
+    'startchar' => \$startchar,
+) or die(":-(\n");
 
 our $charblocks = charblocks();
 our @block_names = sort { $charblocks->{$a}[0][0] - $charblocks->{$b}[0][0] } keys %$charblocks;
 
+die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
 my $block = find_charblock($arg);
 die("no such block: $arg\n") if !$block;
@@ -13,7 +29,31 @@ printf("# %s %s %s\n", $block->[0][2], u($block->[0][0]), u($block->[0][1]));
 for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
     my $charinfo = charinfo($codepoint);
     next if !defined $charinfo;
-    printf("%-8s  %s\n", u($codepoint), $charinfo->{name});
+    if (defined $format) {
+        my %char = (
+            u => sprintf("%-8s", u($codepoint)),
+            n => $charinfo->{name},
+            d => $codepoint,
+            c => displayed_char($codepoint),
+        );
+        print(stringf($format, %char));
+        print("\n");
+    } elsif ($startchar) {
+        printf("STARTCHAR %s %s\n", u($codepoint), $charinfo->{name});
+    } elsif ($char) {
+        printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charinfo->{name});
+    } else {
+        printf("%-8s  %s\n", u($codepoint), $charinfo->{name});
+    }
+}
+
+sub displayed_char {
+    my ($codepoint) = @_;
+    return '' if $codepoint >= 0 && $codepoint <= 31;
+    return '' if $codepoint >= 127 && $codepoint <= 159;
+    return '' if $codepoint >= 0x2060 && $codepoint <= 0x206f;
+    return '' if $codepoint >= 0x2027 && $codepoint <= 0x202e;
+    return chr($codepoint);
 }
 
 sub find_charblock {
