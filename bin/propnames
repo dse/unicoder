@@ -1,0 +1,13 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charprops_all prop_aliases prop_value_aliases prop_invmap prop_values);
+use JSON;
+my $JSON = JSON->new()->canonical(1)->ascii(1)->pretty(1);
+
+my $charprops = charprops_all(0x0041);
+foreach my $prop_name (sort keys %$charprops) {
+    my @prop_name_aliases = grep { $_ ne $prop_name } prop_aliases($prop_name);
+    printf("%s\n", $prop_name);
+    printf("    %s\n", $_) for @prop_name_aliases;
+}
