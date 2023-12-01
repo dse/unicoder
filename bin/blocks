@@ -1,0 +1,15 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charblocks);
+
+my $charblocks = charblocks();
+my @block_names = sort { $charblocks->{$a}->[0]->[0] -
+                           $charblocks->{$b}->[0]->[0] } keys(%$charblocks);
+
+foreach my $block_name (@block_names) {
+    my $block = $charblocks->{$block_name};
+    my $u_start = sprintf("U+%04X", $block->[0]->[0]);
+    my $u_end   = sprintf("U+%04X", $block->[0]->[1]);
+    printf("%-8s  %-8s  %s\n", $u_start, $u_end, $block_name);
+}
