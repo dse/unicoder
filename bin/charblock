@@ -9,7 +9,7 @@ binmode(STDOUT, ':utf8');
 
 our $format;
 our $char;
-our $startchar,
+our $startchar;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
@@ -40,6 +40,7 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         print("\n");
     } elsif ($startchar) {
         printf("STARTCHAR %s %s\n", u($codepoint), $charinfo->{name});
+        printf("ENDCHAR\n");
     } elsif ($char) {
         printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charinfo->{name});
     } else {
