@@ -140,11 +140,13 @@ Getopt::Long::GetOptions(
     'j|json' => \$json,
 ) or die(":-(\n");
 
+die("not enough arguments\n") if !scalar @ARGV;
+
 our $charblocks = charblocks();
 our @block_names = sort { $charblocks->{$a}[0][0] - $charblocks->{$b}[0][0] } keys %$charblocks;
+
 our $encoder;
 
-die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
 my $block = find_charblock($arg);
 die("no such block: $arg\n") if !$block;
@@ -258,3 +260,4 @@ sub normalize {
 #     8-BIT LATIN 1 TO 4
 #         https://ecma-international.org/publications-and-standards/standards/ecma-94/
 # https://en.wikipedia.org/wiki/Unicode_alias_names_and_abbreviations
+# https://www.compart.com/en/unicode/U+0080
