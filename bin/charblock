@@ -4,48 +4,159 @@ use strict;
 use Unicode::UCD qw(charblocks charinfo);
 use Getopt::Long;
 use String::Format qw(stringf);
+use JSON::XS;
+
+our %more_charinfo = (
+    0x0000 => { abbr => ['NUL'] },
+    0x0001 => { abbr => ['SOH'] },
+    0x0002 => { abbr => ['STX'], c1 => { abbr => ['BPH'], names => ['BREAK PERMITTED HERE'] } },
+    0x0003 => { abbr => ['ETX'], c1 => { abbr => ['NBH'], names => ['NO BREAK HERE'] } },
+    0x0004 => { abbr => ['EOT'] },
+    0x0005 => { abbr => ['ENQ'], c1 => { abbr => ['NEL'], names => ['NEXT LINE'] } },
+    0x0006 => { abbr => ['ACK'], c1 => { abbr => ['SSA'], names => ['START OF SELECTED AREA'] } },
+    0x0007 => { abbr => ['BEL'], c1 => { abbr => ['ESA'], names => ['END OF SELECTED AREA'] } },
+    0x0008 => { abbr => ['BS'], c1 => { abbr => ['HTS'], names => ['CHARACTER TABULATION SET'] } },
+    0x0009 => { abbr => ['HT'], c1 => { abbr => ['HTJ'], names => ['CHARACTER TABULATION WITH JUSTIFICATION'] } },
+    0x000a => { abbr => ['LF'], c1 => { abbr => ['VTS'], names => ['LINE TABULATION SET'] } },
+    0x000b => { abbr => ['VT'], c1 => { abbr => ['PLD'], names => ['PARTIAL LINE FORWARD'] } },
+    0x000c => { abbr => ['FF'], c1 => { abbr => ['PLU'], names => ['PARTIAL LINE BACKWARD'] } },
+    0x000d => { abbr => ['CR'], c1 => { abbr => ['RI'], names => ['REVERSE LINE FEED'] } },
+    0x000e => { abbr => ['SO'], abbrs => ['LS1'], c1 => { abbr => ['SS2'], names => ['SINGLE-SHIFT TWO'] } },
+    0x000f => { abbr => ['SI'], abbrs => ['LS0'], c1 => { abbr => ['SS3'], names => ['SINGLE-SHIFT THREE'] } },
+    0x0010 => { abbr => ['DLE'], c1 => { abbr => ['DCS'], names => ['DEVICE CONTROL STRING'] } },
+    0x0011 => { abbr => ['DC1'], names => ['XON'], c1 => { abbr => ['PU1'], names => ['PRIVATE USE 1'] } },
+    0x0012 => { abbr => ['DC2'], c1 => { abbr => ['PU2'], names => ['PRIVATE USE 2'] } },
+    0x0013 => { abbr => ['DC3'], names => ['XOFF'], c1 => { abbr => ['STS'], names => ['SET TRANSMIT STATE'] } },
+    0x0014 => { abbr => ['DC4'], c1 => { abbr => ['CCH'], names => ['CANCEL CHARACTER'] } },
+    0x0015 => { abbr => ['NAK'], c1 => { abbr => ['MW'], names => ['MESSAGE WAITING'] } },
+    0x0016 => { abbr => ['SYN'], c1 => { abbr => ['SPA'], names => ['START OF GUARDED AREA'] } },
+    0x0017 => { abbr => ['ETB'], c1 => { abbr => ['EPA'], names => ['END OF GUARDED AREA'] } },
+    0x0018 => { abbr => ['CAN'], c1 => { abbr => ['SOS'], names => ['START OF STRING'] } },
+    0x0019 => { abbr => ['EM'] },
+    0x001a => { abbr => ['SUB'], c1 => { abbr => ['SCI'], names => ['SINGLE CHARACTER INTRODUCER'] } },
+    0x001b => { abbr => ['ESC'], c1 => { abbr => ['CSI'], names => ['CONTROL SEQUENCE INTRODUCER'] } },
+    0x001c => { abbr => ['IS4', 'FS'], names => ['FIELD SEPARATOR'], c1 => { abbr => ['ST'], names => ['STRING TERMINATOR'] } },
+    0x001d => { abbr => ['IS3', 'GS'], names => ['GROUP SEPARATOR'], c1 => { abbr => ['OSC'], names => ['OPERATING SYSTEM COMMAND'] } },
+    0x001e => { abbr => ['IS2', 'RS'], names => ['RECORD SEPARATOR'], c1 => { abbr => ['PM'], names => ['PRIVACY MESSAGE'] } },
+    0x001f => { abbr => ['IS1', 'US'], names => ['UNIT SEPARATOR'], c1 => { abbr => ['APC'], names => ['APPLICATION PROGRAM COMMAND'] } },
+    0x007f => { abbr => ['DEL'] },
+    0x0080 => { abbr => ['PAD'], names => ['PADDING CHARACTER'] },
+    0x0081 => { abbr => ['HOP'], names => ['HIGH OCTET PRESET'] },
+    0x0082 => { abbr => ['BPH'] },
+    0x0083 => { abbr => ['NBH'] },
+    0x0084 => { abbr => ['IND'], names => ['INDEX'] },
+    0x0085 => { abbr => ['NEL'] },
+    0x0086 => { abbr => ['SSA'] },
+    0x0087 => { abbr => ['ESA'] },
+    0x0088 => { abbr => ['HTS'], names => ['HORIZONTAL TABULATION SET'] },
+    0x0089 => { abbr => ['HTJ'], names => ['HORIZONTAL TABULATION WITH JUSTIFICATION'] },
+    0x008a => { abbr => ['VTS'], names => ['VERTICAL TABULATION SET'] },
+    0x008b => { abbr => ['PLD'], names => ['PARTIAL LINE DOWN'] },
+    0x008c => { abbr => ['PLU'], names => ['PARTIAL LINE UP'] },
+    0x008d => { abbr => ['RI'], names => ['REVERSE INDEX'] },
+    0x008e => { abbr => ['SS2'], names => ['SINGLE-SHIFT-2'] },
+    0x008f => { abbr => ['SS3'], names => ['SINGLE-SHIFT-3'] },
+    0x0090 => { abbr => ['DCS'] },
+    0x0091 => { abbr => ['PU1'], names => ['PRIVATE USE-1'] },
+    0x0092 => { abbr => ['PU2'], names => ['PRIVATE USE-2'] },
+    0x0093 => { abbr => ['STS'] },
+    0x0094 => { abbr => ['CCH'] },
+    0x0095 => { abbr => ['MW'] },
+    0x0096 => { abbr => ['SPA'], names => ['START OF PROTECTED AREA'] },
+    0x0097 => { abbr => ['EPA'], names => ['END OF PROTECTED AREA'] },
+    0x0098 => { abbr => ['SOS'] },
+    0x0099 => { abbr => ['SGC'], names => ['SINGLE GRAPHIC CHARACTER INTRODUCER'] },
+    0x009a => { abbr => ['SCI'] },
+    0x009b => { abbr => ['CSI'] },
+    0x009c => { abbr => ['ST'] },
+    0x009d => { abbr => ['OSC'] },
+    0x009e => { abbr => ['PM'] },
+    0x009f => { abbr => ['APC'] },
+    0x00a0 => { abbr => ['NBSP'] },
+    0x00ad => { abbr => ['SHY'] },
+    0x200b => { abbr => ['ZWSP'] },
+    0x200c => { abbr => ['ZWNJ'] },
+    0x200d => { abbr => ['ZWJ'] },
+    0x200e => { abbr => ['LRM'] },
+    0x200f => { abbr => ['RLM'] },
+    0x202a => { abbr => ['LRE'] },
+    0x202b => { abbr => ['RLE'] },
+    0x202c => { abbr => ['PDF'] },
+    0x202d => { abbr => ['LRO'] },
+    0x202e => { abbr => ['RLO'] },
+    0x202f => { abbr => ['NNBSP'] },
+    0x205f => { abbr => ['MMSP'] },
+    0x2060 => { abbr => ['WJ'] },
+    0x2066 => { abbr => ['LRI'] },
+    0x2067 => { abbr => ['RLI'] },
+    0x2068 => { abbr => ['FSI'] },
+    0x2069 => { abbr => ['PDI'] },
+    0xfeff => { abbr => ['BOM', 'ZWNBSP'], names => ['ZERO WIDTH NO-BREAK SPACE'] },
+);
 
 binmode(STDOUT, ':utf8');
 
 our $format;
 our $char;
 our $startchar;
+our $json;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
     'f|format=s' => \$format,
     'c|char' => \$char,
     'startchar' => \$startchar,
+    'j|json' => \$json,
 ) or die(":-(\n");
 
 our $charblocks = charblocks();
 our @block_names = sort { $charblocks->{$a}[0][0] - $charblocks->{$b}[0][0] } keys %$charblocks;
+our $encoder;
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
 my $block = find_charblock($arg);
 die("no such block: $arg\n") if !$block;
 printf("# %s %s %s\n", $block->[0][2], u($block->[0][0]), u($block->[0][1]));
+my @json_array;
 for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
     my $charinfo = charinfo($codepoint);
     next if !defined $charinfo;
+    my $charname = $charinfo->{name};
+    if (!defined $charname || $charname eq '<control>') {
+        my $unicode10 = $charinfo->{unicode10};
+        if (defined $unicode10) {
+            $charname .= ' -- ' . $unicode10;
+        } else {
+            $charname //= '(undef)';
+        }
+    }
+    if ($json) {
+        $encoder //= JSON::XS->new()->ascii(1)->canonical(1)->pretty(1);
+        push(@json_array, $charinfo);
+        next;
+    }
     if (defined $format) {
         my %char = (
             u => sprintf("%-8s", u($codepoint)),
             n => $charinfo->{name},
+            N => $charname,
             d => $codepoint,
             c => displayed_char($codepoint),
         );
         print(stringf($format, %char));
         print("\n");
     } elsif ($startchar) {
-        printf("STARTCHAR %s %s\n", u($codepoint), $charinfo->{name});
+        printf("STARTCHAR %s %s\n", u($codepoint), $charname);
         printf("ENDCHAR\n");
     } elsif ($char) {
-        printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charinfo->{name});
+        printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charname);
     } else {
-        printf("%-8s  %s\n", u($codepoint), $charinfo->{name});
+        printf("%-8s  %s\n", u($codepoint), $charname);
     }
+}
+if ($json) {
+    print($encoder->encode(\@json_array));
 }
 
 sub displayed_char {
@@ -105,3 +216,14 @@ sub normalize {
     $str =~ s/[^A-Za-z0-9]+//g;
     return $str;
 }
+
+# character info sources:
+#     CONTROL FUNCTIONS
+#         https://ecma-international.org/wp-content/uploads/ECMA-48_5th_edition_june_1991.pdf
+#     7-BIT CODED CHARACTER SET
+#         https://ecma-international.org/wp-content/uploads/ECMA-6_6th_edition_december_1991.pdf
+#     8-BIT STRUCTURE/RULES
+#         https://ecma-international.org/wp-content/uploads/ECMA-43_3rd_edition_december_1991.pdf
+#     8-BIT LATIN 1 TO 4
+#         https://ecma-international.org/publications-and-standards/standards/ecma-94/
+# https://en.wikipedia.org/wiki/Unicode_alias_names_and_abbreviations
