@@ -1,0 +1,112 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON::XS;
+use Unicode::UCD qw(charblocks charinfo);
+use File::Basename qw(dirname);
+use File::Path qw(make_path);
+use List::Util qw(sum);
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
+#                         field indices --v   v-- field values
+our $SEARCH_INDEX_CODEPOINT             = 0;
+our $SEARCH_INDEX_POSITION              = 1;
+our $SEARCH_INDEX_CONTEXT               = 2;
+our     $SEARCH_INDEX_CONTEXT_NAME      =     0;
+our     $SEARCH_INDEX_CONTEXT_UNICODE10 =     1;
+our $SEARCH_INDEX_DB_SCORE              = 3;
+
+my $J = JSON::XS->new();
+
+my %blocks = %{charblocks()};
+
+# blocks in indexing which there is no point.
+delete $blocks{'High Private Use Surrogates'};
+delete $blocks{'Private Use Area'};
+delete $blocks{'Supplementary Private Use Area-A'};
+delete $blocks{'Supplementary Private Use Area-B'};
+delete $blocks{'High Surrogates'};
+delete $blocks{'Low Surrogates'};
+
+my @block_names = sort { $blocks{$a}[0][0] - $blocks{$b}[0][0] } keys %blocks;
+
+my $codepoint_count = sum map { $_->[0][1] - $_->[0][0] + 1 } values %blocks;
+warn("$codepoint_count codepoints total\n");
+
+our %db;
+
+my $total_indexed_count = 0;
+foreach my $block_name (@block_names) {
+    my $block = $blocks{$block_name};
+    my $block_indexed_count = 0;
+    foreach my $range (@$block) {
+        my ($start, $end, $name) = @$range;
+        next if $name eq 'Supplementary Private Use Area-A';
+        next if $name eq 'Supplementary Private Use Area-B';
+        printf("indexing %-48s (%s - %s) ... ", $name, u($start), u($end));
+        for (my $codepoint = $start; $codepoint <= $end; $codepoint++) {
+            my $info = charinfo($codepoint);
+            index_char($info);
+            $total_indexed_count += 1;
+            $block_indexed_count += 1;
+            if (-t 2) {
+                my $msg = sprintf("  %.2f%% (%d of %d)",
+                                  $total_indexed_count / $codepoint_count * 100,
+                                  $total_indexed_count,
+                                  $codepoint_count);
+                print STDERR ($msg . "\b" x length($msg)) if !($total_indexed_count % 163);
+            }
+        }
+        print("\n");
+    }
+}
+
+my $filename = "$ENV{HOME}/.local/share/unicoder/index.json";
+my $dirname = dirname($filename);
+if (-e $dirname && !-d $dirname) {
+    die("$dirname is not a directory\n");
+}
+make_path($dirname);
+my $fh = IO::File->new($filename, 'w') or die("$filename: open - $!");
+binmode($fh) or die("$filename: binmode - $!");
+print $fh $J->encode(\%db);
+close($fh) or die("$filename: close - $!");
+warn(sprintf("Wrote $filename (%d bytes)\n", -s $filename));
+
+sub index_char {
+    my ($info) = @_;
+    return if !defined $info;
+    my $codepoint = hex($info->{code});
+    my $primary_name = $info->{name};
+    my $secondary_name = $info->{unicode10};
+    if ($primary_name eq '<control>') {
+        ($primary_name, $secondary_name) = ($secondary_name, $primary_name);
+    }
+    for ($primary_name, $secondary_name) {
+        s{^[(<]}{};
+        s{[)>]$}{};
+    }
+    my @kw1 = grep { /\S/ } split(/[-\s]+/, $primary_name);
+    my @kw2 = grep { /\S/ } split(/[-\s]+/, $secondary_name);
+    my $hex = sprintf("%x", $codepoint);
+    for (my $i = 0; $i <= $#kw1; $i += 1) {
+        my $kw = lc $kw1[$i];
+        next if $kw eq $hex;
+        push(@{$db{$kw}}, [$codepoint, $i, $SEARCH_INDEX_CONTEXT_NAME, 1]);
+    }
+    for (my $i = 0; $i <= $#kw2; $i += 1) {
+        my $kw = lc $kw2[$i];
+        next if $kw eq $hex;
+        push(@{$db{$kw}}, [$codepoint, $i, $SEARCH_INDEX_CONTEXT_UNICODE10, 0.5]);
+    }
+
+    # NOTES:
+    #
+    # charindex does not index substrings.  It is up to charsearch to
+    # deal with them.
+}
+
+sub u {
+    return sprintf("U+%04X", shift);
+}

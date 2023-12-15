@@ -1,0 +1,57 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON::XS;
+use Unicode::UCD qw(charblocks charinfo);
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
+#                         field indices --v   v-- field values
+our $SEARCH_INDEX_CODEPOINT             = 0;
+our $SEARCH_INDEX_POSITION              = 1;
+our $SEARCH_INDEX_CONTEXT               = 2;
+our     $SEARCH_INDEX_CONTEXT_NAME      =     0;
+our     $SEARCH_INDEX_CONTEXT_UNICODE10 =     1;
+our $SEARCH_INDEX_DB_SCORE              = 3;
+
+our $SEARCH_RESULT_TOTAL_SCORE          = 4;
+our $SEARCH_RESULT_MATCHED_KEYWORD      = 5;
+
+our $J = JSON::XS->new();
+
+our $MIN_SUBSTRING_LENGTH = 3;
+
+my $filename = "$ENV{HOME}/.local/share/unicoder/index.json";
+my $fh = IO::File->new($filename, 'r') or
+  die("$filename: open - $!\n(Use charindex to generate the search index.)\n");
+my $json = do { local $/ = undef; $fh->getline };
+my $db = $J->decode($json);
+
+if (!scalar @ARGV) {
+    die("charsearch: not enough arguments\n");
+}
+
+my @matches;
+my %matches;
+foreach my $keyword (@ARGV) {
+    # for keywords fewer than 3 characters long, match only the
+    # keyword.
+    my $min_length = length($keyword) >= $MIN_SUBSTRING_LENGTH ? $MIN_SUBSTRING_LENGTH : length($keyword);
+
+    my @keys = grep {
+        length($_) >= $min_length && substr($_, 0, length($keyword)) eq $keyword
+    } keys %$db;
+    foreach my $key (@keys) {
+        my $key_score = length($key) / length($keyword); # 1 for exact keyword match; < 1 for substrings.
+        my $db_results  = $db->{$key};
+        foreach my $db_result (@$db_results) {
+            my ($codepoint, $position, $context, $db_score) = @$db_result;
+            my $total_score = $db_score * $key_score;
+            my $match = [@$db_result, $total_score, $key];
+            push(@matches, $match);
+            push(@{$matches{$codepoint}}, $match);
+        }
+    }
+}
+print $J->encode($_) . "\n" foreach @matches;
+
