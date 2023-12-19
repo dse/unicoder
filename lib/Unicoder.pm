@@ -638,6 +638,13 @@ sub charInfo {
         return;
     }
 
+    printf("%-29s   U+%04X\n", 'Hexadecimal', $codepoint);
+    printf("%-29s   %d\n", 'Decimal', $codepoint);
+    printf("%-29s   %s\n", 'Name', $charinfo->{name});
+    printf("%-29s   %s\n", 'Character', chr($codepoint));
+    printf("%-29s   %s\n",
+           ('-' x 29), ('-' x 47));
+
     foreach my $key (nsort keys %$charinfo) {
         if ($self->isDelimiterSeparated) {
             $self->printDelimiterSeparatedLine($key, $charinfo->{$key});
@@ -712,6 +719,14 @@ sub charProperties {
         print(Dumper($charprops));
         return;
     }
+
+    printf("%-29s   U+%04X\n", 'Hexadecimal', $codepoint);
+    printf("%-29s   %d\n", 'Decimal', $codepoint);
+    printf("%-29s   %s\n", 'Name', $charprops->{Name});
+    printf("%-29s   %s\n", 'Character', chr($codepoint));
+    printf("%-29s   %s\n",
+           ('-' x 29), ('-' x 47));
+
     foreach my $key (nsort keys %$charprops) {
         if ($self->isDelimiterSeparated) {
             $self->printDelimiterSeparatedLine($key, $charprops->{$key});
@@ -861,7 +876,7 @@ sub fetchNamesList {
     my $cacheDir = $self->directory . '/' . 'cache';
     make_path($cacheDir);
 
-    my $ua;
+    my $ua = $self->ua();
 
     eval {
         require LWP::UserAgent::Cached;
@@ -1074,6 +1089,34 @@ sub printBlockName {
     return;
     my ($short, $full, @other) = prop_value_aliases('block', $charblock);
     printf("%s\n", $short);
+}
+
+sub ua {
+    my ($self) = @_;
+    if ($self->{ua}) {
+        return $self->{ua};
+    }
+    my $ua;
+    eval {
+        require LWP::UserAgent::Cached;
+        my $cacheDir = $self->directory . '/' . 'cache';
+        make_path($cacheDir);
+        $ua = LWP::UserAgent::Cached->new(cache_dir => $cacheDir);
+    };
+    if ($@) {
+        eval {
+            require LWP::UserAgent;
+            $ua = LWP::UserAgent->new();
+            warn("NOTICE: Please install LWP::UserAgent::Cached if you want caching.\n");
+        };
+    }
+    if ($@) {
+        warn("Neither LWP::UserAgent::Cached nor LWP::UserAgent found.\n");
+        warn("Please install one of them, preferably the former.\n");
+        die();
+    }
+    $self->{ua} = $ua;
+    return $ua;
 }
 
 sub Dumper {

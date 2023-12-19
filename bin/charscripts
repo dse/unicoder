@@ -1,0 +1,25 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON;
+use Unicode::UCD qw(charscripts);
+
+my $charscripts = charscripts();
+# print(JSON->new()->pretty(1)->canonical(1)->ascii(1)->encode($charscripts));
+my @charscript_names = keys %$charscripts;
+@charscript_names = sort { $charscripts->{$a}[0][0] -
+                             $charscripts->{$b}[0][0] } @charscript_names;
+
+foreach my $charscript_name (@charscript_names) {
+    my $script = $charscripts->{$charscript_name};
+    my $count = 0;
+    foreach my $range (@$script) {
+        $count += $range->[1] - $range->[0] + 1;
+    }
+    printf("%8d  %-8s  %s\n", $count, u($script->[0][0]), $charscript_name);
+}
+
+sub u {
+    my ($codepoint) = @_;
+    return sprintf("U+%04X", $codepoint);
+}

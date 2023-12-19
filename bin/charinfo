@@ -1,0 +1,43 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON;
+use Unicode::UCD qw(charinfo charprops_all prop_aliases prop_value_aliases);
+
+die("not enough arguments\n") if !scalar @ARGV;
+my $arg = join(" ", @ARGV);
+my $char = find_charinfo($arg);
+die("no such character: $arg\n") if !$char;
+
+my $charprops = charprops_all(hex($char->{code}));
+if (defined $charprops) {
+    $char->{props} = $charprops;
+
+    # include property name and value aliases
+    foreach my $propname (keys %$charprops) {
+        my $propvalue = $charprops->{$propname};
+        my @prop_name_aliases  = grep { $_ ne $propname  } prop_aliases($propname);
+        my @prop_value_aliases = grep { $_ ne $propvalue } prop_value_aliases($propname, $propvalue);
+        $charprops->{$propname} =
+          [$propvalue, [@prop_name_aliases], [@prop_value_aliases]];
+    }
+}
+
+print(JSON->new()->pretty(1)->canonical(1)->ascii(1)->encode($char));
+
+sub find_charinfo {
+    my ($query) = @_;
+    my $result;
+    if (defined ($result = parse_number($query))) {
+        return charinfo($result);
+    }
+    return;
+}
+
+sub parse_number {
+    my ($str) = @_;
+    return hex($1) if $str =~ /^(?:u\+|0x)([[:xdigit:]]+)$/i;
+    return oct($1) if $str =~ /^0(\d+)$/;
+    return 0 + $1  if $str =~ /^\d+$/;
+    return;
+}

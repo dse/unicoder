@@ -1,0 +1,34 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charscripts charinfo);
+use JSON;
+
+my $charscripts = charscripts();
+
+die("not enough arguments\n") if !scalar @ARGV;
+my $arg = join(' ', @ARGV);
+my $script = $charscripts->{$arg};
+die("no such script: $script\n") if !defined $script;
+
+my $count = 0;
+foreach my $range (@$script) {
+    for (my $codepoint = $range->[0]; $codepoint <= $range->[1]; $codepoint += 1) {
+        $count += 1 if defined charinfo($codepoint);
+    }
+}
+
+printf("# %s (%d)\n", $arg, $count);
+foreach my $range (@$script) {
+    for (my $codepoint = $range->[0]; $codepoint <= $range->[1];
+         $codepoint += 1) {
+        my $charinfo = charinfo($codepoint);
+        next if !defined $charinfo;
+        printf("%-8s  %s\n", u($codepoint), $charinfo->{name});
+    }
+}
+
+sub u {
+    my ($codepoint) = @_;
+    return sprintf("U+%04X", $codepoint);
+}

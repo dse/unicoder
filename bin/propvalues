@@ -1,0 +1,27 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charprops_all prop_aliases prop_value_aliases prop_invmap prop_values);
+use JSON;
+my $JSON = JSON->new()->canonical(1)->ascii(1)->pretty(1);
+
+if (!scalar @ARGV) {
+    my $charprops = charprops_all(0x0041);
+    print_prop($_) foreach sort keys %$charprops;
+} else {
+    my $prop_name = join(' ', @ARGV);
+    print_prop($prop_name);
+}
+
+sub print_prop {
+    my ($prop_name) = @_;
+    printf("%s\n", join(' ', $prop_name, grep { $_ ne $prop_name } prop_aliases($prop_name)));
+    foreach my $prop_value (prop_values($prop_name)) {
+        my @prop_value = ($prop_value, sort grep { $_ ne $prop_value } prop_value_aliases($prop_name, $prop_value));
+        if (scalar @prop_value >= 2) {
+            printf("    %s - %s\n", $prop_value // '(undef)', join(' ', @prop_value));
+        } else {
+            printf("    %s\n", $prop_value // '(undef)');
+        }
+    }
+}
