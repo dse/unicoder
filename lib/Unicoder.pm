@@ -517,10 +517,12 @@ sub search {
 sub printCharacterLine {
     my ($self, $codepoint, $weight) = @_;
     my $charinfo = charinfo($codepoint);
+    return if !defined $charinfo || !scalar keys %$charinfo;
     my $charname = $charinfo->{name};
     my $charname10 = $charinfo->{unicode10};
-    $charname   = undef if $charname   !~ m{\S};
-    $charname10 = undef if $charname10 !~ m{\S};
+    $charname   = undef if defined $charname   && $charname   !~ m{\S};
+    $charname10 = undef if defined $charname10 && $charname10 !~ m{\S};
+    return if !defined $charname && !defined $charname10;
     my $displayName = join(' ', grep { defined $_ } (
         $charname,
         (defined $charname10 && $charname10 ne '') ? "($charname10)" : undef
