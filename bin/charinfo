@@ -3,6 +3,7 @@ use warnings;
 use strict;
 use JSON;
 use Unicode::UCD qw(charinfo charprops_all prop_aliases prop_value_aliases);
+use JSON::XS;
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
