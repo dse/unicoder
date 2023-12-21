@@ -131,6 +131,7 @@ our $format;
 our $char;
 our $startchar;
 our $json;
+our $unicode10;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
@@ -138,6 +139,7 @@ Getopt::Long::GetOptions(
     'c|char' => \$char,
     'startchar' => \$startchar,
     'j|json' => \$json,
+    'unicode10' => \$unicode10,
 ) or die(":-(\n");
 
 die("not enough arguments\n") if !scalar @ARGV;
@@ -163,6 +165,9 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         } else {
             $charname //= '(undef)';
         }
+    }
+    if ($unicode10 && defined $charinfo->{unicode10} && $charinfo->{unicode10} =~ /\S/) {
+        $charname .= sprintf(" [%s]", $charinfo->{unicode10});
     }
     if ($json) {
         $encoder //= JSON::XS->new()->ascii(1)->canonical(1)->pretty(1);
@@ -249,15 +254,3 @@ sub normalize {
     $str =~ s/[^A-Za-z0-9]+//g;
     return $str;
 }
-
-# character info sources:
-#     CONTROL FUNCTIONS
-#         https://ecma-international.org/wp-content/uploads/ECMA-48_5th_edition_june_1991.pdf
-#     7-BIT CODED CHARACTER SET
-#         https://ecma-international.org/wp-content/uploads/ECMA-6_6th_edition_december_1991.pdf
-#     8-BIT STRUCTURE/RULES
-#         https://ecma-international.org/wp-content/uploads/ECMA-43_3rd_edition_december_1991.pdf
-#     8-BIT LATIN 1 TO 4
-#         https://ecma-international.org/publications-and-standards/standards/ecma-94/
-# https://en.wikipedia.org/wiki/Unicode_alias_names_and_abbreviations
-# https://www.compart.com/en/unicode/U+0080
