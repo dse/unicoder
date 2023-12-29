@@ -8,27 +8,32 @@ use charnames qw();
 use Getopt::Long;
 
 our $verbose = 0;
+our $props = 0;
 
 Getopt::Long::Configure('gnu_getopt');
-Getopt::Long::GetOptions('v|verbose+' => \$verbose)
-  or die(":-(");
+Getopt::Long::GetOptions(
+    'v|verbose+' => \$verbose,
+    'p|props' => \$props,
+) or die(":-(");
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
 my $char = find_charinfo($arg);
 die("no such character: $arg\n") if !$char;
 
-my $charprops = charprops_all(hex($char->{code}));
-if (defined $charprops) {
-    $char->{props} = $charprops;
-    if ($verbose) {
-        # include property name and value aliases
-        foreach my $propname (keys %$charprops) {
-            my $propvalue = $charprops->{$propname};
-            my @prop_name_aliases  = grep { $_ ne $propname  } prop_aliases($propname);
-            my @prop_value_aliases = grep { $_ ne $propvalue } prop_value_aliases($propname, $propvalue);
-            $charprops->{$propname} =
-              [$propvalue, [@prop_name_aliases], [@prop_value_aliases]];
+if ($props || $verbose) {
+    my $charprops = charprops_all(hex($char->{code}));
+    if (defined $charprops) {
+        $char->{props} = $charprops;
+        if (($verbose && $props) || $verbose >= 2) {
+            # include property name and value aliases
+            foreach my $propname (keys %$charprops) {
+                my $propvalue = $charprops->{$propname};
+                my @prop_name_aliases  = grep { $_ ne $propname  } prop_aliases($propname);
+                my @prop_value_aliases = grep { $_ ne $propvalue } prop_value_aliases($propname, $propvalue);
+                $charprops->{$propname} =
+                  [$propvalue, [@prop_name_aliases], [@prop_value_aliases]];
+            }
         }
     }
 }
