@@ -5,6 +5,13 @@ use JSON;
 use Unicode::UCD qw(charinfo charprops_all prop_aliases prop_value_aliases);
 use JSON::XS;
 use charnames qw();
+use Getopt::Long;
+
+our $verbose = 0;
+
+Getopt::Long::Configure('gnu_getopt');
+Getopt::Long::GetOptions('v|verbose+' => \$verbose)
+  or die(":-(");
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
@@ -14,14 +21,15 @@ die("no such character: $arg\n") if !$char;
 my $charprops = charprops_all(hex($char->{code}));
 if (defined $charprops) {
     $char->{props} = $charprops;
-
-    # include property name and value aliases
-    foreach my $propname (keys %$charprops) {
-        my $propvalue = $charprops->{$propname};
-        my @prop_name_aliases  = grep { $_ ne $propname  } prop_aliases($propname);
-        my @prop_value_aliases = grep { $_ ne $propvalue } prop_value_aliases($propname, $propvalue);
-        $charprops->{$propname} =
-          [$propvalue, [@prop_name_aliases], [@prop_value_aliases]];
+    if ($verbose) {
+        # include property name and value aliases
+        foreach my $propname (keys %$charprops) {
+            my $propvalue = $charprops->{$propname};
+            my @prop_name_aliases  = grep { $_ ne $propname  } prop_aliases($propname);
+            my @prop_value_aliases = grep { $_ ne $propvalue } prop_value_aliases($propname, $propvalue);
+            $charprops->{$propname} =
+              [$propvalue, [@prop_name_aliases], [@prop_value_aliases]];
+        }
     }
 }
 
