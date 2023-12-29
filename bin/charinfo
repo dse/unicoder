@@ -7,6 +7,8 @@ use JSON::XS;
 use charnames qw();
 use Getopt::Long;
 
+my $J = JSON::XS->new();
+
 our $verbose = 0;
 our $props = 0;
 
@@ -30,6 +32,24 @@ examples:
     charinfo "LATIN CAPITAL LETTER A"   # character name in quotes
     charinfo LATIN CAPITAL LETTER A     # or without them
 EOF
+
+my $db;
+my $filename = "$ENV{HOME}/.local/share/unicoder/charnames.json";
+if (my $fh = IO::File->new($filename, 'r')) {
+    binmode($fh);
+    local $/ = undef;
+    $db = $J->decode(<$fh>);
+}
+
+my @names = sort keys %$db;
+my @query_names = map {
+    my $query_name = uc($_);
+    $query_name =~ s{[^[:alnum:]]+}{}g;
+    my $codepoint = $db->{$_};
+    [ $query_name, $_, $codepoint ]
+} @names;
+my %query_names      = map { $_->[0] => $_->[1] } @query_names;
+my %query_codepoints = map { $_->[0] => $_->[2] } @query_names;
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
@@ -65,11 +85,14 @@ sub find_charinfo {
     if (defined ($result = parse_number($query))) {
         return charinfo($result);
     }
+    if (length($query) == 1) {
+        return charinfo(ord($query));
+    }
     if (defined ($result = charnames::vianame(uc($query)))) {
         return charinfo($result);
     }
-    if (length($query) == 1) {
-        return charinfo(ord($query));
+    if (defined ($result = codepoint_via_approx_name($query))) {
+        return charinfo($result);
     }
     return;
 }
@@ -80,4 +103,11 @@ sub parse_number {
     return oct($1) if $str =~ /^0(\d+)$/;
     return 0 + $1  if $str =~ /^\d+$/;
     return;
+}
+
+sub codepoint_via_approx_name {
+    my ($str) = @_;
+    $str = uc($str);
+    $str =~ s{[^[:alnum:]]+}{};
+    return $query_codepoints{$str};
 }
