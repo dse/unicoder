@@ -14,7 +14,22 @@ Getopt::Long::Configure('gnu_getopt');
 Getopt::Long::GetOptions(
     'v|verbose+' => \$verbose,
     'p|props' => \$props,
-) or die(":-(");
+    'help|?' => sub { usage(); exit(0); },
+) or die("Type 'charinfo --help' for help.\n");
+
+sub usage { print(<<"EOF"); }
+charinfo [-v|--verbose] [-p|--props] <codepoint>
+                                     "<character>"
+                                     <charname>
+examples:
+    charinfo U+0041                     # hexadecimal
+    charinfo 0x0041                     # "
+    charinfo 0101                       # octal (start with 0)
+    charinfo 65                         # decimal
+    charinfo A                          # single character
+    charinfo "LATIN CAPITAL LETTER A"   # character name in quotes
+    charinfo LATIN CAPITAL LETTER A     # or without them
+EOF
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
