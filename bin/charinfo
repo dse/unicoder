@@ -21,6 +21,10 @@ my $arg = join(" ", @ARGV);
 my $char = find_charinfo($arg);
 die("no such character: $arg\n") if !$char;
 
+my $codepoint = hex($char->{code});
+$char->{_codepoint_hex} = sprintf('U+%04X', $codepoint);
+$char->{_codepoint_dec} = $codepoint;
+
 if ($props || $verbose) {
     my $charprops = charprops_all(hex($char->{code}));
     if (defined $charprops) {
