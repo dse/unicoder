@@ -4,6 +4,7 @@ use strict;
 use JSON;
 use Unicode::UCD qw(charinfo charprops_all prop_aliases prop_value_aliases);
 use JSON::XS;
+use charnames qw();
 
 die("not enough arguments\n") if !scalar @ARGV;
 my $arg = join(" ", @ARGV);
@@ -30,6 +31,9 @@ sub find_charinfo {
     my ($query) = @_;
     my $result;
     if (defined ($result = parse_number($query))) {
+        return charinfo($result);
+    }
+    if (defined ($result = charnames::vianame($query))) {
         return charinfo($result);
     }
     return;
