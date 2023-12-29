@@ -65,7 +65,7 @@ sub find_charinfo {
     if (defined ($result = parse_number($query))) {
         return charinfo($result);
     }
-    if (defined ($result = charnames::vianame($query))) {
+    if (defined ($result = charnames::vianame(uc($query)))) {
         return charinfo($result);
     }
     if (length($query) == 1) {
