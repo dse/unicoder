@@ -36,6 +36,9 @@ sub find_charinfo {
     if (defined ($result = charnames::vianame($query))) {
         return charinfo($result);
     }
+    if (length($query) == 1) {
+        return charinfo(ord($query));
+    }
     return;
 }
 
