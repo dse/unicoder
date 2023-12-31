@@ -31,6 +31,7 @@ examples:
     charinfo A                          # single character
     charinfo "LATIN CAPITAL LETTER A"   # character name in quotes
     charinfo LATIN CAPITAL LETTER A     # or without them
+    charinfo latinCapitalLetterA        # space, case, punctuation optional
 EOF
 
 my $db;
