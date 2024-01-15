@@ -6,6 +6,10 @@ use Unicode::UCD qw(charinfo charprops_all prop_aliases prop_value_aliases);
 use JSON::XS;
 use charnames qw();
 use Getopt::Long;
+use File::Basename qw(dirname);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::AdobeGlyphNames qw(get_glyph_name);
 
 my $J = JSON::XS->new();
 
@@ -60,6 +64,10 @@ die("no such character: $arg\n") if !$char;
 my $codepoint = hex($char->{code});
 $char->{_codepoint_hex} = sprintf('U+%04X', $codepoint);
 $char->{_codepoint_dec} = $codepoint;
+my $adobe_glyph_name = get_glyph_name($codepoint);
+if (defined $adobe_glyph_name) {
+    $char->{_adobe_glyph_name} = $adobe_glyph_name;
+}
 
 if ($props || $verbose) {
     my $charprops = charprops_all(hex($char->{code}));
