@@ -5,6 +5,10 @@ use Unicode::UCD qw(charblocks charinfo);
 use Getopt::Long;
 use String::Format qw(stringf);
 use JSON::XS;
+use File::Basename qw(dirname);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::AdobeGlyphNames qw(get_glyph_name);
 
 our %CONTROL = (
     0x0000 => { abbr => ['NUL'] },
@@ -129,18 +133,40 @@ binmode(STDOUT, ':utf8');
 
 our $format;
 our $char;
+our $allchar;
 our $startchar;
 our $json;
 our $unicode10;
+our $decimal;
+our $hexadecimal;
+our $adobe;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
     'f|format=s' => \$format,
-    'c|char' => \$char,
+    'c|char|print-char' => \$char,
     'startchar' => \$startchar,
+    'allchar' => \$allchar,
     'j|json' => \$json,
+    'd|decimal' => \$decimal,
+    'x|hexadecimal' => \$hexadecimal,
+    'a|adobe' => \$adobe,
     'unicode10' => \$unicode10,
+    'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
+
+sub usage { print(<<"EOF"); }
+charblock [<option> ...] <block-name|codepoint>
+    -f, --format=<format>       %u => U+xxx  %n => raw name  %N => name
+                                %d => decimal  %c => character
+        --char, --display-char  display the character
+        --startchar             STARTCHAR
+        --allchar               STARTCHAR ... ENDCHAR
+    -a, --adobe                 list Adobe glyph names.
+    -j, --json                  output JOSN
+        --unicode10             add Unicode 1.0 character names
+    -d, --decimal
+EOF
 
 die("not enough arguments\n") if !scalar @ARGV;
 
@@ -185,12 +211,37 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         print(stringf($format, %char));
         print("\n");
     } elsif ($startchar) {
-        printf("STARTCHAR %s %s\n", u($codepoint), $charname);
+        printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+        printf("COMMENT %s %s\n", u($codepoint), $charname);
+        printf("ENDCHAR\n");
+    } elsif ($allchar) {
+        printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+        printf("COMMENT %s %s\n", u($codepoint), $charname);
+        printf("^       ^\n");
+        printf("|       |\n");
+        printf("|       |\n");
+        printf("|       |\n");
+        printf("|       |\n");
+        printf("|       |\n");
+        printf("+       +\n");
+        printf("|       |\n");
         printf("ENDCHAR\n");
     } elsif ($char) {
-        printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charname);
+        if ($decimal && $hexadecimal) {
+            printf("%-8s  %8d  %1s  %s\n", u($codepoint), $codepoint, displayed_char($codepoint), $charname);
+        } elsif ($decimal) {
+            printf("%8d  %1s  %s\n", $codepoint, displayed_char($codepoint), $charname);
+        } else {
+            printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charname);
+        }
     } else {
-        printf("%-8s  %s\n", u($codepoint), $charname);
+        if ($decimal && $hexadecimal) {
+            printf("%-8s  %8d  %s\n", u($codepoint), $codepoint, $charname);
+        } elsif ($decimal) {
+            printf("%8d  %s\n", $codepoint, $charname);
+        } else {
+            printf("%-8s  %s\n", u($codepoint), $charname);
+        }
     }
 }
 if ($json) {
