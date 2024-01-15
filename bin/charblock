@@ -212,10 +212,12 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         print("\n");
     } elsif ($startchar) {
         printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+        printf("ENCODING %d\n", $codepoint);
         printf("COMMENT %s %s\n", u($codepoint), $charname);
         printf("ENDCHAR\n");
     } elsif ($allchar) {
         printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+        printf("ENCODING %d\n", $codepoint);
         printf("COMMENT %s %s\n", u($codepoint), $charname);
         printf("^       ^\n");
         printf("|       |\n");
