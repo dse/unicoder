@@ -228,22 +228,20 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         printf("+       +\n");
         printf("|       |\n");
         printf("ENDCHAR\n");
-    } elsif ($char) {
-        if ($decimal && $hexadecimal) {
-            printf("%-8s  %8d  %1s  %s\n", u($codepoint), $codepoint, displayed_char($codepoint), $charname);
-        } elsif ($decimal) {
-            printf("%8d  %1s  %s\n", $codepoint, displayed_char($codepoint), $charname);
-        } else {
-            printf("%-8s  %1s  %s\n", u($codepoint), displayed_char($codepoint), $charname);
-        }
     } else {
-        if ($decimal && $hexadecimal) {
-            printf("%-8s  %8d  %s\n", u($codepoint), $codepoint, $charname);
-        } elsif ($decimal) {
-            printf("%8d  %s\n", $codepoint, $charname);
-        } else {
-            printf("%-8s  %s\n", u($codepoint), $charname);
+        if ($hexadecimal || (!$decimal && !$hexadecimal)) {
+            printf("%-8s  ", u($codepoint));
         }
+        if ($decimal) {
+            printf("%8d  ", $codepoint);
+        }
+        if ($char) {
+            printf("%1s  ", displayed_char($codepoint));
+        }
+        if ($adobe) {
+            printf("%-20s  ", get_glyph_name($codepoint, 1) // "");
+        }
+        print("$charname\n");
     }
 }
 if ($json) {
