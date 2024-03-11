@@ -4,6 +4,7 @@ use strict;
 use Unicode::UCD qw(charblocks charinfo);
 use Data::Dumper qw(Dumper);
 use List::Util qw(max sum);
+STDERR->autoflush(1) if -t 2;
 
 # PROTOTYPES
 sub index_of_where (&@);
@@ -46,7 +47,9 @@ foreach my $charblock (@charblocks) {
         my $end   = $subblock->[1];
         my $blockname = $subblock->[2];
         next if $SKIP{$blockname};
-        printf STDERR ("%7.2f%% Searching %s (%s to %s) ...\n", $codepoint_count / $total_count * 100, $blockname, u($start), u($end));
+        if (-t 2) {
+            printf STDERR ("\e[K\r  %7.2f%% Searching %s (%s to %s) ...", $codepoint_count / $total_count * 100, $blockname, u($start), u($end));
+        }
         $codepoint_count += $end - $start + 1;
         for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
             my $charinfo   = charinfo($codepoint);
@@ -71,7 +74,7 @@ foreach my $result (@results) {
     my $codepoint = $result->[1];
     my $charinfo = charinfo($codepoint);
     my $name = join(' -- ', grep { defined $_ } @{$result}[2..3]);
-    printf("%6.3f  %-8s  %s\n", $result->[0], u($codepoint), $name);
+    printf("%-8s  %s\n", u($codepoint), $name);
 }
 
 sub query_charname {
