@@ -57,8 +57,12 @@ foreach my $charblock (@charblocks) {
             my $charname   = $charinfo->{name};
             my $charname10 = $charinfo->{unicode10};
             undef $charname10 if $charname10 eq '';
-            my $score_1 = query_charname($charname, $codepoint);
-            my $score_2 = defined $charname10 ? query_charname($charname10, $codepoint) : 0;
+
+            # Search results are based on a simple keyword search.
+            # Scores are based on the number of specified keywords
+            # appearing in each result.
+            my $score_1 = query_score_by_charname($charname, $codepoint);
+            my $score_2 = defined $charname10 ? query_score_by_charname($charname10, $codepoint) : 0;
             next if !$score_1 && !$score_2;
             my $score = max($score_1, $score_2);
             push(@scores, [$score, $codepoint, $charname, $charname10]);
@@ -66,6 +70,9 @@ foreach my $charblock (@charblocks) {
         }
     }
 }
+
+# After collecting all the scores, we take the top two distinct scores
+# and display any results with those scores.
 my @distinct_scores = sort { $b <=> $a } keys %scores;
 my $max_score = $distinct_scores[0];
 my $min_score = $distinct_scores[1] // $distinct_scores[0];
@@ -77,7 +84,9 @@ foreach my $result (@results) {
     printf("%-8s  %s\n", u($codepoint), $name);
 }
 
-sub query_charname {
+# This subroutine is responsible for determining matches and computing
+# scores.
+sub query_score_by_charname {
     my ($name, $codepoint) = @_;
     return 0 if $name eq '<control>';
     my @words = map { lc $_ } grep { /\S/ } split(/[^[:alnum:]]+/, $name);
@@ -91,6 +100,8 @@ sub query_charname {
     return $count / scalar @words;
 }
 
+# Return the index of the first item in @items equal to the specified
+# $item, using the eq operator.
 sub index_of {
     my ($item, @items) = @_;
     for (my $i = 0; $i <= $#items; $i += 1) {
@@ -99,6 +110,8 @@ sub index_of {
     return -1;
 }
 
+# Return the index of the first item in @items for which the specified
+# $sub(routine) returns true if $_ is a match.
 sub index_of_where (&@) {
     my ($sub, @items) = @_;
     foreach my $i (0 .. $#items) {
@@ -108,10 +121,12 @@ sub index_of_where (&@) {
     return -1;
 }
 
+# Prints a string like U+0040 or U+1F4A9.
 sub u {
     return sprintf("U+%04X", shift);
 }
 
+# For troubleshooting and debugging.
 sub dumper {
     local $Data::Dumper::Indent   = 1;
     local $Data::Dumper::Useqq    = 1;
