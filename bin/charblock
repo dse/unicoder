@@ -159,7 +159,7 @@ sub usage { print(<<"EOF"); }
 charblock [<option> ...] <block-name|codepoint>
     -f, --format=<format>       %u => U+xxx  %n => raw name  %N => name
                                 %d => decimal  %c => character
-        --char, --display-char  display the character
+        --char, --print-char    display the character
         --startchar             STARTCHAR
         --allchar               STARTCHAR ... ENDCHAR
     -a, --adobe                 list Adobe glyph names.
