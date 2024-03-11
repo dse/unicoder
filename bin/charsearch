@@ -1,57 +1,118 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use JSON::XS;
 use Unicode::UCD qw(charblocks charinfo);
-STDOUT->autoflush(1);
-STDERR->autoflush(1);
+use Data::Dumper qw(Dumper);
+use List::Util qw(max sum);
 
-#                         field indices --v   v-- field values
-our $SEARCH_INDEX_CODEPOINT             = 0;
-our $SEARCH_INDEX_POSITION              = 1;
-our $SEARCH_INDEX_CONTEXT               = 2;
-our     $SEARCH_INDEX_CONTEXT_NAME      =     0;
-our     $SEARCH_INDEX_CONTEXT_UNICODE10 =     1;
-our $SEARCH_INDEX_DB_SCORE              = 3;
+# PROTOTYPES
+sub index_of_where (&@);
 
-our $SEARCH_RESULT_TOTAL_SCORE          = 4;
-our $SEARCH_RESULT_MATCHED_KEYWORD      = 5;
+# These blocks can be skipped for searching.  Usually because each
+# character within that block has the same name (modulo a number),
+# or they have no useful characters
+our %SKIP = (
+    "CJK Unified Ideographs Extension A" => 1, # U+3400   naming scheme
+    "CJK Unified Ideographs"             => 1, # U+4E00   naming scheme
+    "High Surrogates"                    => 1, # U+D800   no useful search results
+    "High Private Use Surrogates"        => 1, # U+DB80   no useful search results
+    "Low Surrogates"                     => 1, # U+DC00   no useful search results
+    "Private Use Area"                   => 1, # U+E000   no useful search results
+    "Tangut"                             => 1, # U+17000  naming scheme
+    "Tangut Components"                  => 1, # U+18800  naming scheme
+    "CJK Unified Ideographs Extension B" => 1, # U+20000  naming scheme
+    "CJK Unified Ideographs Extension C" => 1, # U+2A700  naming scheme
+    "CJK Unified Ideographs Extension D" => 1, # U+2B740  naming scheme
+    "CJK Unified Ideographs Extension E" => 1, # U+2B820  naming scheme
+    "CJK Unified Ideographs Extension F" => 1, # U+2CEB0  naming scheme
+    "CJK Unified Ideographs Extension G" => 1, # U+30000  naming scheme
+    "Supplementary Private Use Area-A"   => 1, # U+F0000  no useful search results
+    "Supplementary Private Use Area-B"   => 1, # U+100000 no useful search results
+);
 
-our $J = JSON::XS->new();
+my @keywords = @ARGV;
 
-our $MIN_SUBSTRING_LENGTH = 3;
+our $charblocks = charblocks();
+our @charblocks = sort { $a->[0][0] <=> $b->[0][0] } values %$charblocks;
 
-my $filename = "$ENV{HOME}/.local/share/unicoder/index.json";
-my $fh = IO::File->new($filename, 'r') or
-  die("$filename: open - $!\n(Use charindex to generate the search index.)\n");
-my $json = do { local $/ = undef; $fh->getline };
-my $db = $J->decode($json);
+my $total_count = sum map { $_->[1] - $_->[0] + 1 } grep { !$SKIP{$_->[2]} } map { @$_ } @charblocks;
 
-if (!scalar @ARGV) {
-    die("charsearch: not enough arguments\n");
-}
-
-my @matches;
-my %matches;
-foreach my $keyword (@ARGV) {
-    # for keywords fewer than 3 characters long, match only the
-    # keyword.
-    my $min_length = length($keyword) >= $MIN_SUBSTRING_LENGTH ? $MIN_SUBSTRING_LENGTH : length($keyword);
-
-    my @keys = grep {
-        length($_) >= $min_length && substr($_, 0, length($keyword)) eq $keyword
-    } keys %$db;
-    foreach my $key (@keys) {
-        my $key_score = length($key) / length($keyword); # 1 for exact keyword match; < 1 for substrings.
-        my $db_results  = $db->{$key};
-        foreach my $db_result (@$db_results) {
-            my ($codepoint, $position, $context, $db_score) = @$db_result;
-            my $total_score = $db_score * $key_score;
-            my $match = [@$db_result, $total_score, $key];
-            push(@matches, $match);
-            push(@{$matches{$codepoint}}, $match);
+my @scores;
+my %scores;
+my $codepoint_count = 0;
+foreach my $charblock (@charblocks) {
+    foreach my $subblock (@$charblock) {
+        my $start = $subblock->[0];
+        my $end   = $subblock->[1];
+        my $blockname = $subblock->[2];
+        next if $SKIP{$blockname};
+        printf STDERR ("%7.2f%% Searching %s (%s to %s) ...\n", $codepoint_count / $total_count * 100, $blockname, u($start), u($end));
+        $codepoint_count += $end - $start + 1;
+        for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
+            my $charinfo   = charinfo($codepoint);
+            next if !defined $charinfo;
+            my $charname   = $charinfo->{name};
+            my $charname10 = $charinfo->{unicode10};
+            undef $charname10 if $charname10 eq '';
+            my $score_1 = query_charname($charname, $codepoint);
+            my $score_2 = defined $charname10 ? query_charname($charname10, $codepoint) : 0;
+            next if !$score_1 && !$score_2;
+            my $score = max($score_1, $score_2);
+            push(@scores, [$score, $codepoint, $charname, $charname10]);
+            $scores{$score} = 1;
         }
     }
 }
-print $J->encode($_) . "\n" foreach @matches;
+my @distinct_scores = sort { $b <=> $a } keys %scores;
+my $max_score = $distinct_scores[0];
+my $min_score = $distinct_scores[1] // $distinct_scores[0];
+my @results = sort { $b->[0] <=> $a->[0] || $a->[1] <=> $b->[1] } grep { $_->[0] == $max_score || $_->[0] == $min_score } @scores;
+foreach my $result (@results) {
+    my $codepoint = $result->[1];
+    my $charinfo = charinfo($codepoint);
+    my $name = join(' -- ', grep { defined $_ } @{$result}[2..3]);
+    printf("%6.3f  %-8s  %s\n", $result->[0], u($codepoint), $name);
+}
 
+sub query_charname {
+    my ($name, $codepoint) = @_;
+    return 0 if $name eq '<control>';
+    my @words = map { lc $_ } grep { /\S/ } split(/[^[:alnum:]]+/, $name);
+    return 0 if scalar @words == 0;
+    my $count = 0;
+    foreach my $keyword (@keywords) {
+        if (index_of($keyword, @words) != -1) {
+            $count += 1;
+        }
+    }
+    return $count / scalar @words;
+}
+
+sub index_of {
+    my ($item, @items) = @_;
+    for (my $i = 0; $i <= $#items; $i += 1) {
+        return $i if $item eq $items[$i];
+    }
+    return -1;
+}
+
+sub index_of_where (&@) {
+    my ($sub, @items) = @_;
+    foreach my $i (0 .. $#items) {
+        local $_ = $items[$i];
+        return $i if &$sub();
+    }
+    return -1;
+}
+
+sub u {
+    return sprintf("U+%04X", shift);
+}
+
+sub dumper {
+    local $Data::Dumper::Indent   = 1;
+    local $Data::Dumper::Useqq    = 1;
+    local $Data::Dumper::Terse    = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    goto &Data::Dumper::Dumper;
+}
