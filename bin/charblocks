@@ -2,6 +2,12 @@
 use warnings;
 use strict;
 use Unicode::UCD qw(charblocks);
+use Getopt::Long;
+
+our $print_counts = 0;
+
+Getopt::Long::Configure('gnu_getopt');
+Getopt::Long::GetOptions('c|counts' => \$print_counts) or die(":-(");
 
 my $charblocks = charblocks();
 my @block_names = sort { $charblocks->{$a}->[0]->[0] -
@@ -9,7 +15,17 @@ my @block_names = sort { $charblocks->{$a}->[0]->[0] -
 
 foreach my $block_name (@block_names) {
     my $block = $charblocks->{$block_name};
-    my $u_start = sprintf("U+%04X", $block->[0]->[0]);
-    my $u_end   = sprintf("U+%04X", $block->[0]->[1]);
-    printf("%-8s  %-8s  %s\n", $u_start, $u_end, $block_name);
+    my $i = 0;
+    foreach my $subblock (@$block) {
+        $i += 1;
+        my $suffix = $i > 1 ? " (+)" : "";
+        my $u_start = sprintf("U+%04X", $subblock->[0]);
+        my $u_end   = sprintf("U+%04X", $subblock->[1]);
+        my $count = $subblock->[1] - $subblock->[0] + 1;
+        if ($print_counts) {
+            printf("%8d  %-8s  %-8s  %s\n", $count, $u_start, $u_end, $block_name . $suffix);
+        } else {
+            printf("%-8s  %-8s  %s\n", $u_start, $u_end, $block_name . $suffix);
+        }
+    }
 }
