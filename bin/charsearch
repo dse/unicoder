@@ -34,16 +34,19 @@ our %SKIP = (
 );
 
 our $print_char = 0;
+our $print_score = 0;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
     'c|char|print-char' => \$print_char,
+    's|score|print-score' => \$print_score,
     'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
 sub usage { print(<<"EOF"); }
 charblock [<option> ...] <block-name|codepoint>
-    --char, --print-char  display the character
+    --char, --print-char    display the character
+    --score, --print-score
 EOF
 
 die("not enough arguments\n") if !scalar @ARGV;
@@ -87,23 +90,33 @@ foreach my $charblock (@charblocks) {
         }
     }
 }
+if (-t 2) {
+    printf STDERR ("\r\e[K");
+}
 
 # After collecting all the scores, we take the top two distinct scores
 # and display any results with those scores.
 my @distinct_scores = sort { $b <=> $a } keys %scores;
-my $max_score = $distinct_scores[0];
-my $min_score = $distinct_scores[1] // $distinct_scores[0];
-my @results = sort { $b->[0] <=> $a->[0] || $a->[1] <=> $b->[1] } grep { $_->[0] == $max_score || $_->[0] == $min_score } @scores;
+my @results;
+if (scalar @keywords == 1) {
+    @results = sort { $b->[0] <=> $a->[0] || $a->[1] <=> $b->[1] } @scores;
+} else {
+    my $max_score = $distinct_scores[0];
+    my $min_score = $distinct_scores[1] // $distinct_scores[0];
+    @results = sort { $b->[0] <=> $a->[0] || $a->[1] <=> $b->[1] } grep { $_->[0] == $max_score || $_->[0] == $min_score } @scores;
+}
 foreach my $result (@results) {
+    my $score = $result->[0];
     my $codepoint = $result->[1];
     my $charinfo = charinfo($codepoint);
     my $name = join(' -- ', grep { defined $_ } @{$result}[2..3]);
 
     printf("%-8s", u($codepoint));
+    printf("  %.3f", $score) if $print_score;
     printf("  %-1.1s", displayed_char($codepoint)) if $print_char;
     printf("  %s\n", $name);
 
-    printf("%-8s  %s\n", u($codepoint), $name);
+    # printf("%-8s  %s\n", u($codepoint), $name);
 }
 
 # This subroutine is responsible for determining matches and computing
@@ -165,4 +178,58 @@ sub dumper {
     local $Data::Dumper::Terse    = 1;
     local $Data::Dumper::Sortkeys = 1;
     goto &Data::Dumper::Dumper;
+}
+
+sub index_all {
+    foreach my $charblock (@charblocks) {
+        foreach my $subblock (@$charblock) {
+            my ($start, $end, $blockname) = @$subblock;
+            next if $SKIP{$blockname};
+            for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
+                my $charinfo = charinfo($codepoint);
+                next if !$charinfo;
+                my $name = $charinfo->{name};
+                my $name10 = $charinfo->{unicode10};
+                if (defined $name10 && normalize_name($name) eq normalize_name($name10)) {
+                    $name10 = undef;
+                }
+                if (defined $name) {
+                    index_char_name($codepoint, $name);
+                }
+                if (defined $name10) {
+                    index_char_name($codepoint, $name10);
+                }
+            }
+        }
+    }
+}
+
+our %index;
+
+sub index_char_name {
+    my ($codepoint, $name) = @_;
+    my @name = split_name($name);
+    for (my $idx = 0; $idx < scalar @name; $idx += 1) {
+        my $word = $name[$idx];
+        push(@{$index{$word}}, [$codepoint, $idx, 1]);
+        my $len = length $word;
+        for (my $substr_len = 3; $substr_len < $len; $substr_len += 1) {
+            my $substr = substr($word, 0, $substr_len);
+            push(@{$index{$substr}}, [$codepoint, $idx, $substr_len / $len]);
+        }
+    }
+}
+
+sub normalize_name {
+    my ($name) = @_;
+    $name = ~ s{^A-Za-z0-9]+}{ }g;
+    $name =~ s{\A\s+}{};
+    $name =~ s{\s+\z}{};
+    $name = lc $name;
+    return $name;
+}
+
+sub split_name {
+    my ($name) = @_;
+    return split(/\s+/, normalize_name($name));
 }
