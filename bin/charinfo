@@ -108,9 +108,10 @@ sub find_charinfo {
 
 sub parse_number {
     my ($str) = @_;
+    return         if !defined $str;
     return hex($1) if $str =~ /^(?:u\+|0x)([[:xdigit:]]+)$/i;
     return oct($1) if $str =~ /^0(\d+)$/;
-    return 0 + $1  if $str =~ /^\d+$/;
+    return 0 + $1  if $str =~ /^(\d+)$/;
     return;
 }
 

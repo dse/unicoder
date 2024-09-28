@@ -1,9 +1,23 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use Unicode::UCD qw(general_categories);
+use Unicode::UCD qw(general_categories prop_invlist);
+
+
+
+
+
 use JSON;
 my $JSON = JSON->new()->canonical(1)->ascii(1)->pretty(1);
 
 my $gcs = general_categories();
-print($JSON->encode($gcs));
+
+my @short_cat_names = keys %$gcs;
+
+foreach my $short_cat_name (@short_cat_names) {
+    my $cat_name = $gcs->{$short_cat_name};
+    my $thingy = "General_Category=${cat_name}";
+    my @invlist = prop_invlist($thingy);
+    print("$thingy\n");
+    print("    ", join(', ', @invlist), "\n");
+}
