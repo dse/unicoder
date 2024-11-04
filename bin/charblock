@@ -132,7 +132,7 @@ our %CONTROL_C1 = (
 binmode(STDOUT, ':utf8');
 
 our $format;
-our $char;
+our $print_char;
 our $allchar;
 our $startchar;
 our $json;
@@ -144,7 +144,7 @@ our $adobe;
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
     'f|format=s' => \$format,
-    'c|char|print-char' => \$char,
+    'c|char|print-char' => \$print_char,
     'startchar' => \$startchar,
     'allchar' => \$allchar,
     'j|json' => \$json,
@@ -235,7 +235,7 @@ for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint +=
         if ($decimal) {
             printf("%8d  ", $codepoint);
         }
-        if ($char) {
+        if ($print_char) {
             printf("%1s  ", displayed_char($codepoint));
         }
         if ($adobe) {
