@@ -3,145 +3,112 @@ use warnings;
 use strict;
 use Unicode::UCD qw(charblocks charinfo);
 use Data::Dumper qw(Dumper);
-use List::Util qw(max sum);
+use List::Util qw(max sum min);
+use File::Path qw(make_path);
+use File::Basename qw(dirname);
+use POSIX qw(round);
+use IO::File;
 use Getopt::Long;
+use JSON::XS qw(encode_json decode_json);
+use feature qw(state);
 use open IO => ':locale';
 STDERR->autoflush(1) if -t 2;
 
-# PROTOTYPES
-sub index_of_where (&@);
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::AdobeGlyphNames qw(get_glyph_name);
 
-# These blocks can be skipped for searching.  Usually because each
-# character within that block has the same name (modulo a number),
-# or they have no useful characters
+use constant IDX_CODEPOINT => 0;
+use constant IDX_WORD_INDEX => 1;
+use constant IDX_SCORE => 2;
+use constant IDX_CHARNAME_INDEX => 3;
+# use constant IDX_QUERY_WORD => 4;
+use constant IDX_CHARNAME_COUNT_OF_WORD => 5;
+
+sub weight_first_word_index {
+    # higher score if you start with the first word
+    my ($x, $charname_count) = @_;
+    my $score = 0.9 ** $x;
+    if ($charname_count) {
+        $score *= 2 ** (1 / $charname_count);
+    }
+    return $score;
+}
+sub weight_word_index_delta {
+    # higher scores if your query words are in the same order as the
+    # words in the character name
+    my ($x, $charname_count) = @_;
+    my $score = 0.9 ** abs($x);
+    if ($charname_count) {
+        $score *= 2 ** (1 / $charname_count);
+    }
+    return $score;
+}
+sub weight_word_substring_length_score {
+    # entire words get higher scores than substrings
+    my $score = shift();
+    return sqrt(sqrt($score));
+}
+sub weight_word_count_score {
+    # match more words in the character name and get higher score
+    my ($word_count, $total_word_count) = @_;
+    return sqrt(sqrt($word_count / $total_word_count));
+}
+
 our %SKIP = (
-    "CJK Unified Ideographs Extension A" => 1, # U+3400   naming scheme
-    "CJK Unified Ideographs"             => 1, # U+4E00   naming scheme
+    "CJK Unified Ideographs Extension A" => 1, # U+3400   naming scheme not useful for keyword searches
+    "CJK Unified Ideographs"             => 1, # U+4E00   naming scheme not useful for keyword searches
     "High Surrogates"                    => 1, # U+D800   no useful search results
     "High Private Use Surrogates"        => 1, # U+DB80   no useful search results
     "Low Surrogates"                     => 1, # U+DC00   no useful search results
     "Private Use Area"                   => 1, # U+E000   no useful search results
-    "Tangut"                             => 1, # U+17000  naming scheme
-    "Tangut Components"                  => 1, # U+18800  naming scheme
-    "CJK Unified Ideographs Extension B" => 1, # U+20000  naming scheme
-    "CJK Unified Ideographs Extension C" => 1, # U+2A700  naming scheme
-    "CJK Unified Ideographs Extension D" => 1, # U+2B740  naming scheme
-    "CJK Unified Ideographs Extension E" => 1, # U+2B820  naming scheme
-    "CJK Unified Ideographs Extension F" => 1, # U+2CEB0  naming scheme
-    "CJK Unified Ideographs Extension G" => 1, # U+30000  naming scheme
+    "Tangut"                             => 1, # U+17000  naming scheme not useful for keyword searches
+    "Tangut Components"                  => 1, # U+18800  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension B" => 1, # U+20000  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension C" => 1, # U+2A700  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension D" => 1, # U+2B740  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension E" => 1, # U+2B820  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension F" => 1, # U+2CEB0  naming scheme not useful for keyword searches
+    "CJK Unified Ideographs Extension G" => 1, # U+30000  naming scheme not useful for keyword searches
     "Supplementary Private Use Area-A"   => 1, # U+F0000  no useful search results
     "Supplementary Private Use Area-B"   => 1, # U+100000 no useful search results
 );
 
 our $print_char = 0;
+our $create_db = 0;
+our $decimal;
+our $hexadecimal;
+our $adobe;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
+    "create-db" => \$create_db,
     'c|char|print-char' => \$print_char,
+    'd|decimal' => \$decimal,
+    'x|hexadecimal' => \$hexadecimal,
+    'a|adobe|adobe-glyph-names' => \$adobe,
     'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
 sub usage { print(<<"EOF"); }
-charblock [<option> ...] <block-name|codepoint>
-    --char, --print-char  display the character
+charsearch --create-db
+charsearch [<option> ...] <keyword> ...
+  -c, --char
+  -d, --decimal
+  -x, --hexadecimal
+  -a, --adobe-glyph-names
 EOF
-
-die("not enough arguments\n") if !scalar @ARGV;
-
-my @keywords = @ARGV;
 
 our $charblocks = charblocks();
 our @charblocks = sort { $a->[0][0] <=> $b->[0][0] } values %$charblocks;
-
 my $total_count = sum map { $_->[1] - $_->[0] + 1 } grep { !$SKIP{$_->[2]} } map { @$_ } @charblocks;
 
-my @scores;
-my %scores;
-my $codepoint_count = 0;
-foreach my $charblock (@charblocks) {
-    foreach my $subblock (@$charblock) {
-        my $start = $subblock->[0];
-        my $end   = $subblock->[1];
-        my $blockname = $subblock->[2];
-        next if $SKIP{$blockname};
-        if (-t 2) {
-            printf STDERR ("\e[K\r  %7.2f%% Searching %s (%s to %s) ...", $codepoint_count / $total_count * 100, $blockname, u($start), u($end));
-        }
-        $codepoint_count += $end - $start + 1;
-        for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
-            my $charinfo   = charinfo($codepoint);
-            next if !defined $charinfo;
-            my $charname   = $charinfo->{name};
-            my $charname10 = $charinfo->{unicode10};
-            undef $charname10 if $charname10 eq '';
-
-            # Search results are based on a simple keyword search.
-            # Scores are based on the number of specified keywords
-            # appearing in each result.
-            my $score_1 = query_score_by_charname($charname, $codepoint);
-            my $score_2 = defined $charname10 ? query_score_by_charname($charname10, $codepoint) : 0;
-            next if !$score_1 && !$score_2;
-            my $score = max($score_1, $score_2);
-            push(@scores, [$score, $codepoint, $charname, $charname10]);
-            $scores{$score} = 1;
-        }
-    }
+if ($create_db) {
+    create_db();
+    exit();
 }
 
-# After collecting all the scores, we take the top two distinct scores
-# and display any results with those scores.
-my @distinct_scores = sort { $b <=> $a } keys %scores;
-my $max_score = $distinct_scores[0];
-my $min_score = $distinct_scores[1] // $distinct_scores[0];
-my @results = sort { $b->[0] <=> $a->[0] || $a->[1] <=> $b->[1] } grep { $_->[0] == $max_score || $_->[0] == $min_score } @scores;
-foreach my $result (@results) {
-    my $codepoint = $result->[1];
-    my $charinfo = charinfo($codepoint);
-    my $name = join(' -- ', grep { defined $_ } @{$result}[2..3]);
-
-    printf("%-8s", u($codepoint));
-    printf("  %-1.1s", displayed_char($codepoint)) if $print_char;
-    printf("  %s\n", $name);
-
-    printf("%-8s  %s\n", u($codepoint), $name);
-}
-
-# This subroutine is responsible for determining matches and computing
-# scores.
-sub query_score_by_charname {
-    my ($name, $codepoint) = @_;
-    return 0 if $name eq '<control>';
-    my @words = map { lc $_ } grep { /\S/ } split(/[^[:alnum:]]+/, $name);
-    return 0 if scalar @words == 0;
-    my $count = 0;
-    foreach my $keyword (@keywords) {
-        if (index_of($keyword, @words) != -1) {
-            $count += 1;
-        }
-    }
-    return $count / scalar @words;
-}
-
-# Return the index of the first item in @items equal to the specified
-# $item, using the eq operator.
-sub index_of {
-    my ($item, @items) = @_;
-    for (my $i = 0; $i <= $#items; $i += 1) {
-        return $i if $item eq $items[$i];
-    }
-    return -1;
-}
-
-# Return the index of the first item in @items for which the specified
-# $sub(routine) returns true if $_ is a match.
-sub index_of_where (&@) {
-    my ($sub, @items) = @_;
-    foreach my $i (0 .. $#items) {
-        local $_ = $items[$i];
-        return $i if &$sub();
-    }
-    return -1;
-}
+die("not enough arguments\n") if !scalar @ARGV;
+search_db(@ARGV);
 
 # Prints a string like U+0040 or U+1F4A9.
 sub u {
@@ -158,11 +125,188 @@ sub displayed_char {
     return chr($codepoint);
 }
 
-# For troubleshooting and debugging.
-sub dumper {
-    local $Data::Dumper::Indent   = 1;
-    local $Data::Dumper::Useqq    = 1;
-    local $Data::Dumper::Terse    = 1;
-    local $Data::Dumper::Sortkeys = 1;
-    goto &Data::Dumper::Dumper;
+sub create_db {
+    my $db = {};
+    my $codepoint_count = 0;
+    my $add_word = sub {
+        my %args = @_;
+        my $word = $args{word};
+        push(@{$db->{$word}}, new_result(
+            codepoint      => $args{codepoint},
+            word_index     => $args{word_index},
+            score          => 100,
+            charname_index => $args{charname_index},
+        ));
+        for (my $l = length($word) - 1; $l >= 3; $l -= 1) {
+            my $substr = substr($word, 0, $l);
+            my $score = $l / length($word);
+            $score = 0 + round($score * 100); # in [0, 100]
+            push(@{$db->{$substr}}, new_result(
+                codepoint      => $args{codepoint},
+                word_index     => $args{word_index},
+                score          => $score,
+                charname_index => $args{charname_index},
+            ));
+            # notes: Data::Dumper will output fractional numbers as
+            # strings, e.g., "'0.83'".  Even after round($_ * 100)
+            # they're still quoted.  Forcibly casting them as numbers
+            # (0 + $_) removes the quotes though round($_ * 100) is
+            # still necessary.  So all the scores are now in [0, 100]
+            # instead of [0, 1].
+        }
+    };
+    foreach my $charblock (@charblocks) {
+        foreach my $subblock (@$charblock) {
+            my ($start, $end, $blockname) = @$subblock;
+            next if $SKIP{$blockname};
+            if (-t 2) {
+                printf STDERR ("\r\e[K  %7.2f%% Searching %s (%s to %s) ...\e[K", $codepoint_count / $total_count * 100, $blockname, u($start), u($end));
+            }
+            $codepoint_count += $end - $start + 1;
+            for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
+                my $charinfo = charinfo($codepoint);
+                next if !defined $charinfo;
+                my $charname   = $charinfo->{name};
+                my $charname10 = $charinfo->{unicode10};
+                my @charwords   = word_split($charname);
+                my @charwords10 = word_split($charname10);
+                for (my $i = 0; $i < scalar @charwords; $i += 1) {
+                    my $word = $charwords[$i];
+                    &$add_word(charname_index => 0,
+                               codepoint      => $codepoint,
+                               word           => $word,
+                               word_index     => $i);
+                }
+                for (my $i = 0; $i < scalar @charwords10; $i += 1) {
+                    my $word = $charwords10[$i];
+                    &$add_word(charname_index => 1,
+                               codepoint      => $codepoint,
+                               word           => $word,
+                               word_index     => $i);
+                }
+            }
+        }
+    }
+    if (-t 2) {
+        printf STDERR ("\r\e[K");
+    }
+    my $json_filename = "$ENV{HOME}/.local/share/unicoder/charsearchdb.json";
+    make_path(dirname($json_filename));
+    my $fh = IO::File->new($json_filename, "w");
+    die("$json_filename: $!\n") if !$fh;
+    $fh->print(encode_json($db));
+}
+
+sub search_db {
+    my @query = @_;
+    state $db;
+    if (!$db) {
+        my $filename = "$ENV{HOME}/.local/share/unicoder/charsearchdb.json";
+        $db = decode_json(join("", IO::File->new($filename, "r")->getlines()));
+    }
+    @query = map { word_split($_) } @query;
+    if (!scalar @query) {
+        warn("no query provided\n");
+        return;
+    }
+    my @results;
+    foreach my $query_word (@query) {
+        my $sub_results = $db->{$query_word};
+        if (!$sub_results) {
+            next;
+        }
+        push(@results, map { [@$_] } @$sub_results); # shallow copy of each array
+        foreach my $result (@$sub_results) {
+            # $result->[IDX_QUERY_WORD] = $query_word;
+            $result->[IDX_CHARNAME_COUNT_OF_WORD] = scalar @$sub_results;
+        }
+        # words like LATIN CAPITAL LETTER affect scores less than
+        # words like MULTIPLICATION or SECTION
+    }
+    if (!scalar @results) {
+        warn("no results\n");
+        return;
+    }
+
+    my %by_codepoint;
+    foreach my $result (@results) {
+        my $codepoint = $result->[IDX_CODEPOINT];
+        push(@{$by_codepoint{$codepoint}}, $result);
+    }
+
+    my %scores_by_codepoint;
+    foreach my $codepoint (keys %by_codepoint) {
+        my $charinfo = charinfo($codepoint);
+        my @scores;
+        my %scores_by_charname;
+        my $charname = $charinfo->{name};
+        my $charname10 = $charinfo->{unicode10};
+        foreach my $charname_data (grep { defined $_->[0] && $_->[0] ne '' && $_ ne '<control>' } ([$charname, 0], [$charname10, 1])) {
+            my ($charname, $charname_index) = @$charname_data;
+            my @results = grep { $_->[IDX_CHARNAME_INDEX] == $charname_index } @{$by_codepoint{$codepoint}};
+            next if !scalar @results;
+            my $score = weight_first_word_index($results[0][IDX_WORD_INDEX],
+                                                $results[0][IDX_CHARNAME_COUNT_OF_WORD]);
+            foreach my $i (1 .. $#results) {
+                my $word_index_delta = $results[$i][IDX_WORD_INDEX] - $results[$i - 1][IDX_WORD_INDEX];
+                $score *= weight_word_index_delta($word_index_delta,
+                                                  $results[$i][IDX_CHARNAME_COUNT_OF_WORD]);
+            }
+            foreach my $i (0 .. $#results) {
+                $score *= weight_word_substring_length_score($results[$i][IDX_SCORE]);
+            }
+            my @charname = word_split($charname);
+            $score *= weight_word_count_score(scalar(@results), scalar(@charname));
+            $scores_by_charname{$charname} = $score;
+            push(@scores, { charname => $charname, charname_index => $charname_index, score => $score });
+        }
+
+        my @charnames = sort { $scores_by_charname{$b} <=> $scores_by_charname{$a} } keys %scores_by_charname;
+        @scores = sort { $b->{score} <=> $a->{score} } @scores;
+        $scores_by_codepoint{$codepoint} = {
+            score => $scores[0]->{score},
+            scores_list => [@scores],
+            scores_by_charname => {%scores_by_charname},
+            charnames => [@charnames],
+        };
+    }
+
+    my @codepoints = sort { ($scores_by_codepoint{$b}{score} <=> $scores_by_codepoint{$a}{score}) || ($a <=> $b) } keys %scores_by_codepoint;
+    splice(@codepoints, 20);
+    foreach my $codepoint (@codepoints) {
+        my $which_charname = $scores_by_codepoint{$codepoint}->{charnames}->[0];
+        my $charinfo = charinfo($codepoint);
+        # my $charname = $charinfo->{name};
+        # my $charname10 = $charinfo->{unicode10};
+        # printf("%5.2f  ", $scores_by_codepoint{$codepoint}->{score});
+        if ($hexadecimal || (!$decimal && !$hexadecimal)) {
+            printf("%-8s  ", u($codepoint));
+        }
+        if ($decimal) {
+            printf("%8d  ", $codepoint);
+        }
+        if ($print_char) {
+            printf("%1s  ", displayed_char($codepoint));
+        }
+        if ($adobe) {
+            printf("%-20s  ", get_glyph_name($codepoint, 1) // "");
+        }
+        print("$which_charname\n");
+    }
+}
+
+sub word_split {
+    my ($str) = @_;
+    return if !defined $str;
+    return grep { $_ ne '' && $_ ne '<control>' } map { lc $_ } split(qr/[^[:alnum:]]+/, $str);
+}
+
+sub new_result {
+    my %args = @_;
+    my $result = [];
+    $result->[IDX_CODEPOINT]      = $args{codepoint};
+    $result->[IDX_WORD_INDEX]     = $args{word_index};
+    $result->[IDX_SCORE]          = $args{score};
+    $result->[IDX_CHARNAME_INDEX] = $args{charname_index};
+    return $result;
 }
