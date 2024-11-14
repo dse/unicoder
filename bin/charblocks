@@ -6,8 +6,28 @@ use Getopt::Long;
 
 our $print_counts = 0;
 
+our $FORMAT_DEC = ["%8d"];
+our $FORMAT_HEX = ["0x%04x", "%8s"];
+our $FORMAT_U   = ["U+%04X", "%-8s"];
+
+our $format = $FORMAT_U;
+
 Getopt::Long::Configure('gnu_getopt');
-Getopt::Long::GetOptions('c|counts' => \$print_counts) or die(":-(");
+Getopt::Long::GetOptions(
+    'f|printf|format' => sub {
+        $format = [$_[1]];
+    },
+    'c|counts' => \$print_counts,
+    'd|decimal' => sub {
+        $format = $FORMAT_DEC;
+    },
+    'x|hexadecimal' => sub {
+        $format = $FORMAT_HEX;
+    },
+    'U|unicode-hex' => sub {
+        $format = $FORMAT_U;
+    },
+) or die(":-(");
 
 my $charblocks = charblocks();
 my @block_names = sort { $charblocks->{$a}->[0]->[0] -
@@ -19,13 +39,16 @@ foreach my $block_name (@block_names) {
     foreach my $subblock (@$block) {
         $i += 1;
         my $suffix = $i > 1 ? " (+)" : "";
-        my $u_start = sprintf("U+%04X", $subblock->[0]);
-        my $u_end   = sprintf("U+%04X", $subblock->[1]);
+        my ($num_format, $str_format) = @$format;
+        my $s_start = sprintf($num_format // "%d", $subblock->[0]);
+        my $s_end   = sprintf($num_format // "%d", $subblock->[1]);
+        $s_start = sprintf($str_format, $s_start) if defined $str_format;
+        $s_end   = sprintf($str_format, $s_end)   if defined $str_format;
         my $count = $subblock->[1] - $subblock->[0] + 1;
         if ($print_counts) {
-            printf("%8d  %-8s  %-8s  %s\n", $count, $u_start, $u_end, $block_name . $suffix);
+            printf("%8d  %s  %s  %s\n", $count, $s_start, $s_end, $block_name . $suffix);
         } else {
-            printf("%-8s  %-8s  %s\n", $u_start, $u_end, $block_name . $suffix);
+            printf("%s  %s  %s\n", $s_start, $s_end, $block_name . $suffix);
         }
     }
 }
