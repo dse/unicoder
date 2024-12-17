@@ -78,6 +78,7 @@ our $create_db = 0;
 our $decimal;
 our $hexadecimal;
 our $adobe;
+our $results = 20;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
@@ -86,6 +87,7 @@ Getopt::Long::GetOptions(
     'd|decimal' => \$decimal,
     'x|hexadecimal' => \$hexadecimal,
     'a|adobe|adobe-glyph-names' => \$adobe,
+    'r|results=i' => \$results,
     'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
@@ -96,6 +98,7 @@ charsearch [<option> ...] <keyword> ...
   -d, --decimal
   -x, --hexadecimal
   -a, --adobe-glyph-names
+  -r, --results=NUM
 EOF
 
 our $charblocks = charblocks();
@@ -272,7 +275,7 @@ sub search_db {
     }
 
     my @codepoints = sort { ($scores_by_codepoint{$b}{score} <=> $scores_by_codepoint{$a}{score}) || ($a <=> $b) } keys %scores_by_codepoint;
-    splice(@codepoints, 20);
+    splice(@codepoints, $results);
     foreach my $codepoint (@codepoints) {
         my $which_charname = $scores_by_codepoint{$codepoint}->{charnames}->[0];
         my $charinfo = charinfo($codepoint);
