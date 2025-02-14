@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 use warnings;
 use strict;
-use Unicode::UCD qw(charblocks charinfo);
+use Unicode::UCD qw(charblocks charinfo charprop);
 use Getopt::Long;
 use String::Format qw(stringf);
 use JSON::XS;
@@ -140,6 +140,8 @@ our $unicode10;
 our $decimal;
 our $hexadecimal;
 our $adobe;
+our $table;
+our $property;
 
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
@@ -151,6 +153,8 @@ Getopt::Long::GetOptions(
     'd|decimal' => \$decimal,
     'x|hexadecimal' => \$hexadecimal,
     'a|adobe' => \$adobe,
+    't|table' => \$table,
+    'p|property=s' => \$property,
     'unicode10' => \$unicode10,
     'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
@@ -180,70 +184,112 @@ my $block = find_charblock($arg);
 die("no such block: $arg\n") if !$block;
 printf("# %s %s %s\n", $block->[0][2], u($block->[0][0]), u($block->[0][1]));
 my @json_array;
-for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
-    my $charinfo = charinfo($codepoint);
-    next if !defined $charinfo;
-    my $charname = $charinfo->{name};
-    if (!defined $charname || $charname eq '<control>') {
-        my $unicode10 = $charinfo->{unicode10};
-        if (defined $unicode10) {
-            $charname .= ' -- ' . $unicode10;
-        } else {
-            $charname //= '(undef)';
+
+my %GC_NON_PRINTING = (
+    "Control" => 1,             # e.g., U+0007 BELL
+    "Line_Separator" => 1,      # U+2028 LINE SEPARATOR
+    "Paragraph_Separator" => 1, # U+2029 PARAGRAPH SEPARATOR
+    "Surrogate" => 1,           # e.g., U+D800
+    "Space_Separator" => 1,     # e.g., U+202F NARROW NO-BREAK SPACE
+    "Format" => 1,              # e.g., U+00AD SOFT HYPHEN
+    "Private_Use" => 1,         # e.g., U+102345
+    "Unassigned" => 1,          # e.g., U+34567
+    "Other_Symbol" => 1,        # e.g., U+FFFD
+);
+
+if ($table) {
+    my $start = $block->[0][0];
+    my $end = $block->[0][1];
+    my $start_row = int($start / 16);
+    my $end_row = int($end / 16);
+    for (my $row = $start_row; $row <= $end_row; $row += 1) {
+        printf("%-8s", u($row));
+        for (my $col = 0; $col < 16; $col += 1) {
+            my $codepoint = $row * 16 + $col;
+            my $charinfo = charinfo($codepoint);
+            if (!defined $charinfo) {
+                print("   -");
+                next;
+            }
+            my $general_category = charprop($codepoint, "General Category");
+            if ($GC_NON_PRINTING{$general_category}) {
+                print("   -");
+                next;
+            }
+            printf("   %s", chr($codepoint));
         }
-    }
-    if ($unicode10 && defined $charinfo->{unicode10} && $charinfo->{unicode10} =~ /\S/) {
-        $charname .= sprintf(" [%s]", $charinfo->{unicode10});
-    }
-    if ($json) {
-        $encoder //= JSON::XS->new()->ascii(1)->canonical(1)->pretty(1);
-        push(@json_array, $charinfo);
-        next;
-    }
-    if (defined $format) {
-        my %char = (
-            u => sprintf("%-8s", u($codepoint)),
-            n => $charinfo->{name},
-            N => $charname,
-            d => $codepoint,
-            c => displayed_char($codepoint),
-        );
-        print(stringf($format, %char));
         print("\n");
-    } elsif ($startchar) {
-        printf("STARTCHAR %s\n", get_glyph_name($codepoint));
-        printf("ENCODING %d\n", $codepoint);
-        printf("COMMENT %s %s\n", u($codepoint), $charname);
-        printf("ENDCHAR\n");
-    } elsif ($allchar) {
-        printf("STARTCHAR %s\n", get_glyph_name($codepoint));
-        printf("ENCODING %d\n", $codepoint);
-        printf("COMMENT %s %s\n", u($codepoint), $charname);
-        printf("^       ^\n");
-        printf("|       |\n");
-        printf("|       |\n");
-        printf("|       |\n");
-        printf("|       |\n");
-        printf("|       |\n");
-        printf("+       +\n");
-        printf("|       |\n");
-        printf("ENDCHAR\n");
-    } else {
-        if ($hexadecimal || (!$decimal && !$hexadecimal)) {
-            printf("%-8s  ", u($codepoint));
+    }
+} else {
+    for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
+        my $charinfo = charinfo($codepoint);
+        next if !defined $charinfo;
+        my $charname = $charinfo->{name};
+        if (!defined $charname || $charname eq '<control>') {
+            my $unicode10 = $charinfo->{unicode10};
+            if (defined $unicode10) {
+                $charname .= ' -- ' . $unicode10;
+            } else {
+                $charname //= '(undef)';
+            }
         }
-        if ($decimal) {
-            printf("%8d  ", $codepoint);
+        if ($unicode10 && defined $charinfo->{unicode10} && $charinfo->{unicode10} =~ /\S/) {
+            $charname .= sprintf(" [%s]", $charinfo->{unicode10});
         }
-        if ($print_char) {
-            printf("%1s  ", displayed_char($codepoint));
+        if ($json) {
+            $encoder //= JSON::XS->new()->ascii(1)->canonical(1)->pretty(1);
+            push(@json_array, $charinfo);
+            next;
         }
-        if ($adobe) {
-            printf("%-20s  ", get_glyph_name($codepoint, 1) // "");
+        if (defined $format) {
+            my %char = (
+                u => sprintf("%-8s", u($codepoint)),
+                n => $charinfo->{name},
+                N => $charname,
+                d => $codepoint,
+                c => displayed_char($codepoint),
+            );
+            print(stringf($format, %char));
+            print("\n");
+        } elsif ($startchar) {
+            printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+            printf("ENCODING %d\n", $codepoint);
+            printf("COMMENT %s %s\n", u($codepoint), $charname);
+            printf("ENDCHAR\n");
+        } elsif ($allchar) {
+            printf("STARTCHAR %s\n", get_glyph_name($codepoint));
+            printf("ENCODING %d\n", $codepoint);
+            printf("COMMENT %s %s\n", u($codepoint), $charname);
+            printf("^       ^\n");
+            printf("|       |\n");
+            printf("|       |\n");
+            printf("|       |\n");
+            printf("|       |\n");
+            printf("|       |\n");
+            printf("+       +\n");
+            printf("|       |\n");
+            printf("ENDCHAR\n");
+        } else {
+            if ($hexadecimal || (!$decimal && !$hexadecimal)) {
+                printf("%-8s  ", u($codepoint));
+            }
+            if ($decimal) {
+                printf("%8d  ", $codepoint);
+            }
+            if ($print_char) {
+                printf("%1s  ", displayed_char($codepoint));
+            }
+            if ($adobe) {
+                printf("%-20s  ", get_glyph_name($codepoint, 1) // "");
+            }
+            if (defined $property) {
+                printf("%-32s  ", charprop($codepoint, $property));
+            }
+            print("$charname\n");
         }
-        print("$charname\n");
     }
 }
+
 if ($json) {
     print($encoder->encode(\@json_array));
 }
