@@ -1,0 +1,22 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(charblocks);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::Utils qw(u);
+
+my $charblocks = charblocks();
+my @keys = sort {
+    $charblocks->{$a}->[0]->[0] <=> $charblocks->{$b}->[0]->[0]
+} keys %$charblocks;
+
+foreach my $key (@keys) {
+    my $block = $charblocks->{$key};
+    foreach my $b (@$block) {
+        my ($start, $end, $name) = @$b;
+        printf("%s  %s  %s\n", u($start, 1), u($end, 1), $name);
+    }
+}

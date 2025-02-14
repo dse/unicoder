@@ -1,0 +1,42 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(charprops_all prop_aliases prop_values prop_invlist prop_value_aliases);
+use List::Util qw(max);
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+my @props = sort { lc $a cmp lc $b } keys %{charprops_all(65)};
+my @short;
+my @full;
+foreach my $prop (@props) {
+    my ($short, $full, @other) = prop_aliases($prop);
+    push(@short, $short);
+    push(@full, $full);
+}
+my $short_width = max(0, map { length($_) } @short);
+my $full_width = max(0, map { length($_) } @full);
+foreach my $prop (@props) {
+    my @values = prop_values($prop);
+    my ($short, $full, @other) = prop_aliases($prop);
+    printf("    %-*s  %-*s  %8s  %d\n",
+           $short_width, $short, $full_width, $full, "", scalar(@values));
+    next if $short eq 'blk';    # Block
+    next if $short eq 'gc';     # General Category
+    next if $short eq 'sc';     # Script
+    next if $short eq 'scx';    # Script Extensions
+    foreach my $value (@values) {
+        next if !defined $value;
+        my @invlist = prop_invlist("$prop=$value");
+        my $count = 0;
+        for (my $i = 0; $i < scalar @invlist; $i += 2) {
+            $count += ($invlist[$i + 1] // 0x110000) - $invlist[$i];
+        }
+        my ($short_name, $full_name, @other_names) = prop_value_aliases($prop, $value);
+        printf("    %-*s  %-*s  %8d  %-32s  %s\n",
+               $short_width, "", $full_width, "", $count,
+               $short_name, $full_name);
+    }
+}

@@ -1,0 +1,28 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(prop_values prop_value_aliases);
+use List::Util qw(max);
+
+foreach my $arg (@ARGV) {
+    my @values = prop_values($arg);
+    printf("%s\n", $arg);
+    my @short;
+    my @full;
+    foreach my $value (@values) {
+        my ($short, $full, @other) = prop_value_aliases($arg, $value);
+        push(@short, $short);
+        push(@full, $full);
+    }
+    my $short_width = max(map { length($_) } @short);
+    my $full_width = max(map { length($_) } @full);
+    foreach my $value (@values) {
+        my ($short, $full, @other) = prop_value_aliases($arg, $value);
+        printf("    %-*s  %-*s\n",
+               $short_width, $short, $full_width, $full);
+        foreach my $other (grep { $_ ne $short && $_ ne $full } @other) {
+            printf("    %-*s  %-*s\n",
+                   $short_width, "", $full_width, $other);
+        }
+    }
+}

@@ -1,0 +1,29 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(charprops_all prop_aliases);
+use List::Util qw(max);
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+my @props = sort { lc $a cmp lc $b } keys %{charprops_all(65)};
+my @short;
+my @full;
+foreach my $prop (@props) {
+    my ($short, $full, @other) = prop_aliases($prop);
+    push(@short, $short);
+    push(@full, $full);
+}
+my $short_width = max(map { length($_) } @short);
+my $full_width = max(map { length($_) } @full);
+foreach my $prop (@props) {
+    my ($short, $full, @other) = prop_aliases($prop);
+    printf("    %-*s  %-*s\n",
+           $short_width, $short, $full_width, $full);
+    foreach my $other (grep { $_ ne $short && $_ ne $full } @other) {
+        printf("    %-*s  %-*s\n",
+               $short_width, "", $full_width, $other);
+    }
+}

@@ -1,0 +1,11 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(bidi_types);
+
+my $categories = bidi_types();
+foreach my $short_name (sort keys %$categories) {
+    printf("%-3s  %s\n", $short_name, $categories->{$short_name});
+}

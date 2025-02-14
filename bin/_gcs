@@ -1,0 +1,11 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(general_categories);
+
+my $categories = general_categories();
+foreach my $short_name (sort keys %$categories) {
+    printf("%-2s  %s\n", $short_name, $categories->{$short_name});
+}

@@ -1,0 +1,22 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(charscripts);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::Utils qw(u);
+
+my $charscripts = charscripts();
+my @keys = sort {
+    $charscripts->{$a}->[0]->[0] <=> $charscripts->{$b}->[0]->[0]
+} keys %$charscripts;
+
+foreach my $key (@keys) {
+    my $script = $charscripts->{$key};
+    foreach my $b (@$script) {
+        my ($start, $end, $name) = @$b;
+        printf("%s  %s  %s\n", u($start, 1), u($end, 1), $name);
+    }
+}

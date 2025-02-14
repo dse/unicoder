@@ -1,0 +1,21 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(charprop);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::Utils qw(parse_number);
+
+die("not enough arguments\n") if scalar @ARGV < 2;
+die("too many arguments\n") if scalar @ARGV > 2;
+
+my ($codepoint_arg, $prop) = @ARGV;
+my $codepoint = parse_number($codepoint_arg);
+die("invalid codepoint: $codepoint_arg\n") if !defined $codepoint;
+my $value = charprop($codepoint, $prop);
+if (!defined $value) {
+    exit(1);
+}
+print($value, "\n");
