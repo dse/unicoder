@@ -194,7 +194,7 @@ my %GC_NON_PRINTING = (
     "Format" => 1,              # e.g., U+00AD SOFT HYPHEN
     "Private_Use" => 1,         # e.g., U+102345
     "Unassigned" => 1,          # e.g., U+34567
-    "Other_Symbol" => 1,        # e.g., U+FFFD
+    # "Other_Symbol" => 1,        # e.g., U+FFFD
 );
 
 if ($table) {
@@ -203,20 +203,20 @@ if ($table) {
     my $start_row = int($start / 16);
     my $end_row = int($end / 16);
     for (my $row = $start_row; $row <= $end_row; $row += 1) {
-        printf("%-8s", u($row));
+        printf("%-8s", u($row * 16));
         for (my $col = 0; $col < 16; $col += 1) {
             my $codepoint = $row * 16 + $col;
             my $charinfo = charinfo($codepoint);
             if (!defined $charinfo) {
-                print("   -");
+                print(" -");
                 next;
             }
             my $general_category = charprop($codepoint, "General Category");
             if ($GC_NON_PRINTING{$general_category}) {
-                print("   -");
+                print(" -");
                 next;
             }
-            printf("   %s", chr($codepoint));
+            printf(" %s", chr($codepoint));
         }
         print("\n");
     }
