@@ -108,7 +108,7 @@ sub unicoder_save_db {
     my $json_text = $JSON->encode($DB);
     print $fh $json_text;
     close $fh;
-    printf STDERR ("Wrote %d characters (%d substrings)\n", length($json_text), scalar keys %$DB);
+    # printf STDERR ("Wrote %d characters (%d substrings)\n", length($json_text), scalar keys %$DB);
     return 1;
 }
 
@@ -119,7 +119,7 @@ sub unicoder_load_db {
     my $json_text = <$fh>;
     close $fh;
     my $db = $JSON->decode($json_text);
-    printf STDERR ("Read %d characters (%d substrings)\n", length($json_text), scalar keys %$db);
+    # printf STDERR ("Read %d characters (%d substrings)\n", length($json_text), scalar keys %$db);
     $DB = $db;                  # separate step in case decoding fails
     return 1;
 }
@@ -133,10 +133,10 @@ sub unicoder_search_db {
     my %entry_counts_by_query_word;
     foreach my $query_word_idx (0 .. $#query_words) {
         my $query_word = $query_words[$query_word_idx];
-        printf("%s:\n", $query_word);
+        # printf("%s:\n", $query_word);
         my @db_entries = @{$DB->{$query_word}};
         if (!scalar @db_entries) {
-            printf("    No results.\n");
+            # printf("    No results.\n");
             continue;
         }
         $entry_counts_by_query_word{$query_word} = scalar @db_entries;
