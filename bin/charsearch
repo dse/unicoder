@@ -25,7 +25,7 @@ foreach my $result (@results) {
     my ($codepoint, $score) = ($result->{codepoint},
                                $result->{score});
     my @charnames = get_charnames($codepoint);
-    printf("%-8s  %6.2f  %s   %s\n", u($codepoint), $score, print_char($codepoint), $charnames[0]);
+    printf("%-8s  %s   %s\n", u($codepoint),print_char($codepoint), join(" -- ", @charnames));
 }
 if ($result_count > 20) {
     printf("# Use --all to list all %d results.\n", $result_count);
