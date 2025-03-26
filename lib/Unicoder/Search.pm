@@ -6,6 +6,7 @@ use Unicode::UCD qw(charinfo charblocks);
 use JSON::XS;
 use File::Path qw(make_path);
 use File::Basename qw(dirname);
+use POSIX qw(round);
 
 use lib dirname(__FILE__) . "/..";
 use Unicoder::Utils qw(get_charnames split_words set_stderr_autoflush);
@@ -42,6 +43,7 @@ our $JSON = JSON::XS->new();
 
 our $DB = {};
 
+# It's an index of each query term.
 sub unicoder_create_db {
     $DB = {};
     my $add_charname = sub {
@@ -53,11 +55,9 @@ sub unicoder_create_db {
             my $word_len = length($word);
             my $min_len = min($MIN_INDEX_LENGTH, $word_len);
             my $max_len = $word_len;
-            # printf("        %d: %s (%d) (substring lengths %d .. %d)\n", $word_idx, $word, $word_len, $min_len, $max_len);
             foreach my $substr_len ($min_len .. $max_len) {
                 foreach my $substr_idx (0 .. ($word_len - $substr_len)) {
                     my $substr = substr($word, $substr_idx, $substr_len);
-                    # printf("            substr(%d, %d) = %s\n", $substr_idx, $substr_len, $substr);
                     my $entry = [$codepoint,
                                  $word_idx,
                                  $word_count,
@@ -108,7 +108,6 @@ sub unicoder_save_db {
     my $json_text = $JSON->encode($DB);
     print $fh $json_text;
     close $fh;
-    # printf STDERR ("Wrote %d characters (%d substrings)\n", length($json_text), scalar keys %$DB);
     return 1;
 }
 
@@ -119,27 +118,25 @@ sub unicoder_load_db {
     my $json_text = <$fh>;
     close $fh;
     my $db = $JSON->decode($json_text);
-    # printf STDERR ("Read %d characters (%d substrings)\n", length($json_text), scalar keys %$db);
-    $DB = $db;                  # separate step in case decoding fails
+    $DB = $db; # separate step in case decoding fails and exception is caught
     return 1;
 }
 
+# It's a search engine.
 sub unicoder_search_db {
     my ($query_words, $more_info) = @_;
     my @query_words = @$query_words;
     @query_words = map { split_words(lc($_)) } @query_words;
     my $query_word_count = scalar @query_words;
     my %raw_results_by_codepoint;
-    my %entry_counts_by_query_word;
+    my %occurrence_count_in_db;
     foreach my $query_word_idx (0 .. $#query_words) {
         my $query_word = $query_words[$query_word_idx];
-        # printf("%s:\n", $query_word);
         my @db_entries = @{$DB->{$query_word}};
         if (!scalar @db_entries) {
-            # printf("    No results.\n");
             continue;
         }
-        $entry_counts_by_query_word{$query_word} = scalar @db_entries;
+        $occurrence_count_in_db{$query_word} = scalar @db_entries;
         foreach my $db_entry (@db_entries) {
             my ($codepoint, $word_idx, $word_count, $word_len, $substr_idx, $substr_len, $which_charname) = @$db_entry;
             my $raw_result = { codepoint      => $codepoint,
@@ -156,33 +153,45 @@ sub unicoder_search_db {
     }
     my %scores_by_codepoint;
     foreach my $codepoint (keys %raw_results_by_codepoint) {
-        my @raw_results = @{$raw_results_by_codepoint{$codepoint}};
-        my $word_matched_count = scalar uniq sort map {
-            sprintf("%d.%d", $_->{which_charname}, $_->{word_idx})
-        } @raw_results;
+        my @raw_results_cp = @{$raw_results_by_codepoint{$codepoint}};
         my $highest_score = 0;
-        foreach my $raw_result (@raw_results) {
-            my $word_idx = $raw_result->{word_idx};
-            my $word_count = $raw_result->{word_count};
-            my $word_len = $raw_result->{word_len};
-            my $substr_idx = $raw_result->{substr_idx};
-            my $substr_len = $raw_result->{substr_len};
-            my $which_charname = $raw_result->{which_charname};
-            my $query_word = $raw_result->{query_word};
-            my $query_word_idx = $raw_result->{query_word_idx};
-            my $score = 1;
-            $score *= 1.1 ** ($word_matched_count / $query_word_count - 1);
-            $score *= 1.1 ** ($substr_len / $word_len);
-            $score *= 0.9 ** ($substr_idx / (1 + $word_len - $substr_len));
-            $score *= 0.8 ** $which_charname;         # primary charname = 1; secondary charname = 0.8
-            $score *= (0.5 + 0.5 ** $entry_counts_by_query_word{$query_word});
-            $highest_score = max($highest_score, $score);
+        # compute a score for matching the query against each
+        # character name (current style and/or Unicode 1.0 style)
+        foreach my $which_charname (0, 1) {
+            my @raw_results = grep { $_->{which_charname} == $which_charname } @raw_results_cp;
+            next if !scalar @raw_results;
+            my $word_matched_count = scalar uniq sort map { $_->{word_idx} } @raw_results;
+            foreach my $raw_result (@raw_results) {
+                my $word_idx = $raw_result->{word_idx};
+                my $word_count = $raw_result->{word_count};
+                my $word_len = $raw_result->{word_len};
+                my $substr_idx = $raw_result->{substr_idx};
+                my $substr_len = $raw_result->{substr_len};
+                my $which_charname = $raw_result->{which_charname};
+                my $query_word = $raw_result->{query_word};
+                my $query_word_idx = $raw_result->{query_word_idx};
+                my $occurrence_count = $occurrence_count_in_db{$query_word};
+                $raw_result->{word_matched_count} = $word_matched_count;
+                $raw_result->{occurrence_count} = $occurrence_count;
+                my $A = $raw_result->{A} = sqrt(sqrt($word_matched_count / $word_count));
+                my $B = $raw_result->{B} = sqrt(sqrt($substr_len / $word_len));
+                my $C = $raw_result->{C} = sqrt(sqrt(1 - $substr_idx / (1 + $word_len - $substr_len)));
+                my $D = $raw_result->{D} = 0.95 ** $which_charname;
+                my $E = $raw_result->{E} = sqrt(sqrt(0.5 + 0.5 ** $occurrence_count));
+                my $F = $raw_result->{F} = sqrt(sqrt(sqrt($substr_len)));
+                my $score = $A * $B * $C * $D * $E * $F;
+                $raw_result->{score} = $score;
+                $highest_score = max($highest_score, $score);
+            }
         }
         $scores_by_codepoint{$codepoint} = $highest_score;
     }
-    my @codepoints = sort { $scores_by_codepoint{$b} <=> $scores_by_codepoint{$a} } keys %scores_by_codepoint;
+    my @codepoints = sort {
+        round(1000 * ($scores_by_codepoint{$b} - $scores_by_codepoint{$a})) || ($a <=> $b)
+    } keys %scores_by_codepoint;
     if ($more_info) {
-        return map { { codepoint => $_, score => $scores_by_codepoint{$_} } } @codepoints;
+        return map { { codepoint => $_, score => $scores_by_codepoint{$_},
+                         raw_results => $raw_results_by_codepoint{$_} } } @codepoints;
     }
     return @codepoints;
 }
