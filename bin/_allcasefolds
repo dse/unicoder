@@ -1,0 +1,10 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON::XS;
+use Unicode::UCD qw(all_casefolds);
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+our $all_casefolds_ref = all_casefolds();
+print($JSON->encode($all_casefolds_ref));

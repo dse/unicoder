@@ -1,0 +1,19 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use File::Basename qw(dirname);
+use JSON::XS;
+use Unicode::UCD qw(search_invlist);
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::Utils qw(parse_number);
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+foreach my $arg (@ARGV) {
+    my $codepoint = parse_number($arg);
+    if (!defined $codepoint) {
+        print("null\n");
+        next;
+    }
+}

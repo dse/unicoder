@@ -1,0 +1,12 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(prop_invlist);
+use JSON::XS;
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+foreach my $prop (@ARGV) {
+    my @invlist = prop_invlist($prop);
+    print($JSON->encode(\@invlist));
+}

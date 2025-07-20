@@ -1,0 +1,52 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charinfo);
+
+if (scalar(@ARGV)) {
+    foreach my $arg (@ARGV) {
+        process($arg);
+    }
+} else {
+    while (<>) {
+        my @codes = split();
+        foreach my $code (@codes) {
+            process($code);
+        }
+    }
+}
+
+sub process {
+    my ($arg) = shift;
+    my $charinfo = find_charinfo($arg);
+    if (!$charinfo) {
+        print("$arg\n");
+        return;
+    }
+    my $codepoint = hex($charinfo->{code});
+    my $u = sprintf("U+%04X", $codepoint);
+    printf("%-8s  %s\n", $u, $charinfo->{name});
+}
+
+sub find_charinfo {
+    my ($query) = @_;
+    my $result;
+    if (defined ($result = parse_number($query))) {
+        return charinfo($result);
+    }
+    if (length($query) == 1) {
+        return charinfo(ord($query));
+    }
+    if (defined ($result = charnames::vianame(uc($query)))) {
+        return charinfo($result);
+    }
+    return;
+}
+
+sub parse_number {
+    my ($str) = @_;
+    return hex($1) if $str =~ /^(?:u\+|0x)([[:xdigit:]]+)$/i;
+    return oct($1) if $str =~ /^0(\d+)$/;
+    return 0 + $1  if $str =~ /^\d+$/;
+    return;
+}

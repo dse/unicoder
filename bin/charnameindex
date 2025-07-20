@@ -1,0 +1,104 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON::XS;
+use Unicode::UCD qw(charblocks charinfo);
+use File::Basename qw(dirname);
+use IO::File;
+use File::Path qw(make_path);
+
+STDERR->autoflush(1);
+
+my $J = JSON::XS->new();
+
+my $charblocks = charblocks();
+
+my @blacklist = (0xd800, 0xdb80, 0xdc00, 0xe000, 0xf0000, 0x100000);
+my %blacklist = map { $_ => 1 } @blacklist;
+
+my $total_codepoint_count = scalar map { $_->[0] .. $_->[1] } grep { !$blacklist{$_->[0]} } map { @$_ } values %$charblocks;
+
+my %db;
+my $codepoint_count = 0;
+my $name_count = 0;
+my $named_codepoint_count = 0;
+my %named_codepoint_count_by_block_name;
+my %named_codepoint_count_by_block_codepoint;
+foreach my $block_name (keys %$charblocks) {
+    my $block = $charblocks->{$block_name};
+    my $block_codepoint = $block->[0]->[0];
+    $named_codepoint_count_by_block_name{$block_name} = 0;
+    $named_codepoint_count_by_block_codepoint{$block_codepoint} = 0;
+    foreach my $range (@$block) {
+        next if $blacklist{$range->[0]};
+        foreach my $codepoint ($range->[0] .. $range->[1]) {
+            my $charinfo = charinfo($codepoint);
+            if (defined $charinfo) {
+                my $name = $charinfo->{name};
+                my $unicode10 = $charinfo->{unicode10};
+                my $has_name = 0;
+                if (defined $name && $name =~ /\S/ && $name ne '<control>') {
+                    $db{$name} = $codepoint;
+                    $has_name = 1;
+                    $name_count += 1;
+                }
+                if (defined $unicode10 && $unicode10 =~ /\S/) {
+                    $db{$unicode10} = $codepoint;
+                    $has_name = 1;
+                    $name_count += 1;
+                }
+                if ($has_name) {
+                    $named_codepoint_count += 1;
+                    $named_codepoint_count_by_block_name{$block_name} += 1;
+                    $named_codepoint_count_by_block_codepoint{$block_codepoint} += 1;
+                }
+            }
+            $codepoint_count += 1;
+            if ($codepoint_count % 23 == 0) {
+                if (-t 2) {
+                    printf STDERR (
+                        "\r    %d names - %d (%.2f%%) named / %d (%.2f%%) / %d total\eK",
+                        $name_count,
+                        $named_codepoint_count,
+                        $named_codepoint_count / $total_codepoint_count * 100,
+                        $codepoint_count,
+                        $codepoint_count / $total_codepoint_count * 100,
+                        $total_codepoint_count
+                    );
+                }
+            }
+        }
+    }
+}
+if (-t 2) {
+    print STDERR "\r\eK";
+}
+printf("%8d codepoints\n", $total_codepoint_count);
+printf("%8d codepoints with names\n", $named_codepoint_count);
+printf("%8d names\n", $name_count);
+
+my $filename = "$ENV{HOME}/.local/share/unicoder/charnames.json";
+my $dirname = dirname($filename);
+if (-e $dirname && !-d $dirname) {
+    die("$dirname is not a directory\n");
+}
+
+make_path($dirname);
+my $fh = IO::File->new($filename, 'w') or die("$filename: open - $!");
+$fh->print($J->encode(\%db));
+close($fh) or die("$filename - close: $!");
+printf("Wrote %s\n", $filename);
+
+foreach my $block (sort { $a->[0]->[0] <=> $b->[0]->[0] } values %$charblocks) {
+    foreach my $range (@$block) {
+        next if $blacklist{$range->[0]};
+        my $block_name = $range->[2];
+        my $block_codepoint = $range->[0];
+        my $u = sprintf("U+%04X", $block_codepoint);
+        printf("  %8d named / %8d total in %-8s  %s\n",
+               $named_codepoint_count_by_block_name{$block_name},
+               $named_codepoint_count_by_block_codepoint{$block_codepoint},
+               $u,
+               $block_name);
+    }
+}

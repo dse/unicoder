@@ -1,0 +1,17 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(prop_invmap);
+use JSON::XS;
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+foreach my $prop (@ARGV) {
+    my ($list_ref, $map_ref, $format, $missing) = prop_invmap($prop);
+    print($JSON->encode({
+        list => $list_ref,
+        map => $map_ref,
+        format => $format,
+        missing => $missing,
+    }));
+}

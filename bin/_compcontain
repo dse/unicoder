@@ -1,0 +1,92 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(charinfo charblocks);
+use JSON::XS;
+use File::Basename qw(dirname);
+use File::Path qw(make_path);
+use IO::File;
+
+use lib dirname(__FILE__) . "/../lib";
+use Unicoder::Utils qw(parse_number);
+
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+
+our $JSON = JSON::XS->new()->pretty(1)->canonical(1)->ascii(1)->space_before(0);
+
+my $decomps = get_decomp_list();
+
+foreach my $arg (@ARGV) {
+    my $codepoint = parse_number($arg);
+    die("invalid codepoint: $codepoint\n") if !defined $codepoint;
+    my $decomp_array = $decomps->{$codepoint};
+    next if !defined $decomp_array;
+    my @codepoints = @$decomp_array;
+    foreach my $codepoint (@codepoints) {
+        my $name = charinfo($codepoint)->{name};
+        printf("U+%04X %s\n", $codepoint, $name);
+        my $decomposition = charinfo($codepoint)->{decomposition};
+        my @decomposition = split(' ', $decomposition);
+        foreach my $decomp (@decomposition) {
+            if ($decomp =~ /^[0-9A-Fa-f]+$/) {
+                my $codepoint = hex($decomp);
+                my $name = charinfo($codepoint)->{name};
+                printf("    U+%04X %s\n", $codepoint, $name);
+            } else {
+                printf("    %s\n", $decomp);
+            }
+        }
+    }
+}
+
+sub get_decomp_list {
+    my $filename = "$ENV{HOME}/.cache/unicoder/reverse-decomps.json";
+    my $tmp_filename = $filename . ".tmp";
+    if (-e $filename) {
+        return $JSON->decode(join("", IO::File->new($filename, 'r')->getlines()));
+    }
+    my $decomps = {};
+    my $charblocks = charblocks();
+    foreach my $block (sort { $a->[0]->[0] <=> $b->[0]->[0] } values %$charblocks) {
+        foreach my $sub_block (@$block) {
+            my ($start, $end, $name) = @$sub_block;
+            next if $name eq 'Private Use Area';
+            next if $name eq 'Supplementary Private Use Area-A';
+            next if $name eq 'Supplementary Private Use Area-B';
+            for (my $codepoint = $start; $codepoint <= $end; $codepoint += 1) {
+                printf STDERR ("\rU+%04X\e[K", $codepoint) if -t 2 && $codepoint % 107 == 0;
+                my $charinfo = charinfo($codepoint);
+                next if !defined $charinfo;
+                my $decomp = $charinfo->{decomposition};
+                next if !defined $decomp or $decomp eq '';
+                my @decomp = split(' ', $decomp);
+                my @codepoints = map { hex($_) } grep { /^[0-9A-Fa-f]+$/ } @decomp;
+                foreach my $decomp_codepoint (@codepoints) {
+                    push(@{$decomps->{$decomp_codepoint}}, $codepoint);
+                }
+            }
+        }
+    }
+    printf STDERR ("\r\e[K") if -t 2;
+    make_path(dirname($tmp_filename));
+    my $w = IO::File->new($tmp_filename, "w");
+    $w->print($JSON->encode($decomps));
+    close($w);
+    make_path(dirname($filename));
+    rename($tmp_filename, $filename) or die("rename: $!\n");
+    return $decomps;
+}
+
+# skip surrogates and Private Use Area
+# skip Supplementary Private Use Areas-A and B
+
+sub exclude_codepoint {
+    my ($codepoint) = @_;
+    return 1 if $codepoint >= 0 && $codepoint <= 31;
+    return 1 if $codepoint >= 127 && $codepoint <= 159;
+    return 1 if $codepoint >= 0xd800 && $codepoint <= 0xdfff;
+    return 1 if $codepoint >= 0xe000 && $codepoint <= 0xf8ff;
+    return 1 if $codepoint >= 0x0f0000 && $codepoint <= 0x10ffff;
+    return;
+}

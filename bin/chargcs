@@ -1,0 +1,17 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use Unicode::UCD qw(general_categories prop_values prop_value_aliases prop_invlist);
+
+foreach my $gc (prop_values("Gc")) {
+    my ($short_name, $full_name, @other_names) = prop_value_aliases("Gc", $gc);
+    my @invlist = prop_invlist("Gc=" . $gc);
+    my $total = 0;
+    while (scalar @invlist >= 2) {
+        $total = $total + ($invlist[1] - $invlist[0]);
+        splice(@invlist, 0, 2);
+    }
+    printf("%8d  %-2s  %-24s", $total, $short_name, $full_name);
+    printf("  %-24s", $_) foreach @other_names;
+    print("\n");
+}
