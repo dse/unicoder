@@ -7,9 +7,18 @@ use JSON::XS;
 use File::Path qw(make_path);
 use File::Basename qw(dirname);
 use POSIX qw(round);
+use Data::Dumper qw(Dumper);
 
 use lib dirname(__FILE__) . "/..";
 use Unicoder::Utils qw(get_charnames split_words set_stderr_autoflush);
+
+use constant ENT_CODEPOINT => 0;
+use constant ENT_WORD_IDX => 1;
+use constant ENT_WORD_COUNT => 2;
+use constant ENT_WORD_LEN => 3;
+use constant ENT_SUBSTR_IDX => 4;
+use constant ENT_SUBSTR_LEN => 5;
+use constant ENT_WHICH_CHARNAME => 6;
 
 use base "Exporter";
 our @EXPORT = qw();
@@ -85,11 +94,9 @@ sub unicoder_create_db {
                                $block_name, $start, $end);
             }
             foreach my $codepoint ($start .. $end) {
-                # printf("U+%04X\n", $codepoint);
                 my @names = get_charnames($codepoint, 1);
                 foreach my $i (0 .. $#names) {
                     my $name = $names[$i];
-                    # printf("    %s\n", join(" ", @$name));
                     &$add_charname($codepoint, $i, @{$names[$i]});
                 }
             }
@@ -130,9 +137,28 @@ sub unicoder_search_db {
     my $query_word_count = scalar @query_words;
     my %raw_results_by_codepoint;
     my %occurrence_count_in_db;
+
     foreach my $query_word_idx (0 .. $#query_words) {
         my $query_word = $query_words[$query_word_idx];
+
+        while (1) {
+            if ($query_word =~ s{^-}{}) {
+                # negate
+            } elsif ($query_word =~ s{^\^}{}) {
+                # start of word
+            } elsif ($query_word =~ s{^\+}{}) {
+                # require
+            } elsif ($query_word =~ s{^=}{}) {
+                # whole word
+            } else {
+                last;
+            }
+        }
+
         my @db_entries = @{$DB->{$query_word}};
+        foreach my $entry (@db_entries) {
+            print("$query_word: @$entry\n");
+        }
         if (!scalar @db_entries) {
             continue;
         }
@@ -158,7 +184,7 @@ sub unicoder_search_db {
         # compute a score for matching the query against each
         # character name (current style and/or Unicode 1.0 style)
         foreach my $which_charname (0, 1) {
-            my @raw_results = grep { $_->{which_charname} == $which_charname } @raw_results_cp;
+            my @raw_results = grep { ($_->{which_charname} // 0) == $which_charname } @raw_results_cp;
             next if !scalar @raw_results;
             my $word_matched_count = scalar uniq sort map { $_->{word_idx} } @raw_results;
             foreach my $raw_result (@raw_results) {
