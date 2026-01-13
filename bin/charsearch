@@ -18,8 +18,10 @@ Getopt::Long::GetOptions(
 unicoder_load_db();
 
 my @results = unicoder_search_db(\@ARGV, 1);
-my $result_count = @results;
-splice(@results, 20);
+my $result_count = scalar @results;
+if (!$all && $result_count < 20) {
+    splice(@results, 20);
+}
 
 foreach my $result (@results) {
     my ($codepoint, $score) = ($result->{codepoint},
