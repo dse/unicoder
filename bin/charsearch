@@ -29,6 +29,6 @@ foreach my $result (@results) {
     my @charnames = get_charnames($codepoint);
     printf("%-8s  %s   %s\n", u($codepoint), print_char($codepoint), join(" -- ", @charnames));
 }
-if ($result_count > 20) {
+if ($result_count > 20 && !$all) {
     printf("# Use --all to list all %d results.\n", $result_count);
 }
