@@ -3,6 +3,7 @@ use warnings;
 use strict;
 use FindBin qw($Bin);
 use lib "$Bin/../lib";
+use Unicode::UCD qw(charinfo);
 use Unicoder::Search qw(unicoder_load_db unicoder_search_db);
 use Unicoder::Utils qw(u get_charnames print_char);
 binmode(STDOUT, ":utf8");
@@ -19,14 +20,21 @@ unicoder_load_db();
 
 my @results = unicoder_search_db(\@ARGV, 1);
 my $result_count = @results;
-splice(@results, 20);
+if (!$all) {
+    splice(@results, 20);
+}
 
 foreach my $result (@results) {
-    my ($codepoint, $score) = ($result->{codepoint},
-                               $result->{score});
+    my ($codepoint, $score) = ($result->{codepoint}, $result->{score});
     my @charnames = get_charnames($codepoint);
-    printf("%-8s  %s   %s\n", u($codepoint), print_char($codepoint), join(" -- ", @charnames));
+    my $charinfo = charinfo($codepoint);
+    printf("%-8s  %s   %-2s  %s\n",
+           u($codepoint),
+           print_char($codepoint),
+           (defined $charinfo) ? $charinfo->{category} : "",
+           join(" -- ", @charnames));
 }
+
 if ($result_count > 20) {
     printf("# Use --all to list all %d results.\n", $result_count);
 }
