@@ -202,6 +202,7 @@ if ($table) {
     my $end = $block->[0][1];
     my $start_row = int($start / 16);
     my $end_row = int($end / 16);
+    print("         0 1 2 3 4 5 6 7 8 9 A B C D E F\n");
     for (my $row = $start_row; $row <= $end_row; $row += 1) {
         printf("%-8s", u($row * 16));
         for (my $col = 0; $col < 16; $col += 1) {
@@ -220,6 +221,7 @@ if ($table) {
         }
         print("\n");
     }
+    print("         0 1 2 3 4 5 6 7 8 9 A B C D E F\n");
 } else {
     for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
         my $charinfo = charinfo($codepoint);
