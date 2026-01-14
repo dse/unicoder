@@ -19,8 +19,8 @@ Getopt::Long::GetOptions(
 unicoder_load_db();
 
 my @results = unicoder_search_db(\@ARGV, 1);
-my $result_count = @results;
-if (!$all) {
+my $result_count = scalar @results;
+if (!$all && $result_count < 20) {
     splice(@results, 20);
 }
 
@@ -34,7 +34,6 @@ foreach my $result (@results) {
            (defined $charinfo) ? $charinfo->{category} : "",
            join(" -- ", @charnames));
 }
-
-if ($result_count > 20) {
+if ($result_count > 20 && !$all) {
     printf("# Use --all to list all %d results.\n", $result_count);
 }
