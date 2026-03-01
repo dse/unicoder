@@ -156,9 +156,6 @@ sub unicoder_search_db {
         }
 
         my @db_entries = @{$DB->{$query_word}};
-        foreach my $entry (@db_entries) {
-            print("$query_word: @$entry\n");
-        }
         if (!scalar @db_entries) {
             continue;
         }
