@@ -20,7 +20,7 @@ unicoder_load_db();
 
 my @results = unicoder_search_db(\@ARGV, 1);
 my $result_count = scalar @results;
-if (!$all && $result_count < 20) {
+if (!$all && $result_count > 20) {
     splice(@results, 20);
 }
 
