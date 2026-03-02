@@ -138,23 +138,36 @@ sub unicoder_search_db {
     my %raw_results_by_codepoint;
     my %occurrence_count_in_db;
 
-    foreach my $query_word_idx (0 .. $#query_words) {
-        my $query_word = $query_words[$query_word_idx];
+    my %negate_words;
+    my %require_words;
+    my @negate_words;
+    my @require_words;
 
+    foreach my $query_word_idx (0 .. $#query_words) {
+        my $start_with;
+        my $whole_word;
+        my $negate_words;
+        my $require_words;
+        my $query_word = $query_words[$query_word_idx];
+        print("$query_word\n");
         while (1) {
-            if ($query_word =~ s{^-}{}) {
-                # negate
-            } elsif ($query_word =~ s{^\^}{}) {
-                # start of word
-            } elsif ($query_word =~ s{^\+}{}) {
-                # require
-            } elsif ($query_word =~ s{^=}{}) {
-                # whole word
+            if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
+                print("    negate $query_word\n");
+                $negate_words{$query_word} = 1;
+                push(@negate_words, $query_word);
+                $negate_words = 1;
+            } elsif ($query_word =~ s{^(?:start:|startwith:|\^)}{}) {
+                $start_with = 1;
+            } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
+                $require_words{$query_word} = 1;
+                push(@require_words, $query_word);
+                $require_words = 1;
+            } elsif ($query_word =~ s{^(?:whole:|wholeword:|=)}{}) {
+                $whole_word = 1;
             } else {
                 last;
             }
         }
-
         my @db_entries = @{$DB->{$query_word}};
         if (!scalar @db_entries) {
             continue;
@@ -162,18 +175,40 @@ sub unicoder_search_db {
         $occurrence_count_in_db{$query_word} = scalar @db_entries;
         foreach my $db_entry (@db_entries) {
             my ($codepoint, $word_idx, $word_count, $word_len, $substr_idx, $substr_len, $which_charname) = @$db_entry;
-            my $raw_result = { codepoint      => $codepoint,
-                               word_idx       => $word_idx,
-                               word_count     => $word_count,
-                               word_len       => $word_len,
-                               substr_idx     => $substr_idx,
-                               substr_len     => $substr_len,
-                               which_charname => $which_charname,
-                               query_word     => $query_word,
-                               query_word_idx => $query_word_idx };
+            next if $start_with && $substr_idx;
+            next if $whole_word && $substr_len < $word_len;
+            my $raw_result = {
+                codepoint      => $codepoint,
+                word_idx       => $word_idx,
+                word_count     => $word_count,
+                word_len       => $word_len,
+                substr_idx     => $substr_idx,
+                substr_len     => $substr_len,
+                which_charname => $which_charname,
+                query_word     => $query_word,
+                query_word_idx => $query_word_idx,
+                negate_word    => $negate_words,
+                require_word   => $require_words,
+                start_with     => $start_with,
+                whole_word     => $whole_word,
+            };
             push(@{$raw_results_by_codepoint{$codepoint}}, $raw_result);
         }
     }
+
+    foreach my $codepoint (keys %raw_results_by_codepoint) {
+        my @results = @{$raw_results_by_codepoint{$codepoint}};
+        if (grep { $_->{negate_words} } @results) {
+            delete $raw_results_by_codepoint{$codepoint};
+        }
+        foreach my $require_word (@require_words) {
+            my @grep = grep { $_->{require_word} && $_->{query_word} eq $require_word } @results;
+            if (!scalar @grep) {
+                delete $raw_results_by_codepoint{$codepoint};
+            }
+        }
+    }
+
     my %scores_by_codepoint;
     foreach my $codepoint (keys %raw_results_by_codepoint) {
         my @raw_results_cp = @{$raw_results_by_codepoint{$codepoint}};
