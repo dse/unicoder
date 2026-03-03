@@ -151,17 +151,20 @@ sub unicoder_search_db {
         my $require_word;
         my $query_word = $query_words[$query_word_idx];
         while (1) {
-            if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
+            if ($query_word =~ s{^(?:negate:|not:)}{}) {
                 $negate_word = 1;
-            } elsif ($query_word =~ s{^(?:start:|starts?with:|\^)}{}) {
+            } elsif ($query_word =~ s{^(?:start:|starts?with:)}{}) {
                 $start_with = 1;
-            } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
+            } elsif ($query_word =~ s{^(?:require:)}{}) {
                 $require_word = 1;
-            } elsif ($query_word =~ s{^(?:whole:|wholeword:|=)}{}) {
+            } elsif ($query_word =~ s{^(?:word:|whole:|wholeword:)}{}) {
                 $whole_word = 1;
             } else {
                 last;
             }
+        }
+        if ($query_word =~ /:/) {
+            die("invalid operator(s): $query_word\n");
         }
 
         my %hash = (
