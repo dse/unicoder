@@ -51,7 +51,7 @@ sub char_line_as_string {
         $str .= sprintf("  %-2s", print_char_as_string($codepoint));
     }
     if ($args{adobe}) {
-        $str .= sprintf("  %-24s", get_glyph_name_by_codepoint($codepoint));
+        $str .= sprintf("  %-20s", get_glyph_name_by_codepoint($codepoint));
     }
 
     if (defined $charname && defined $charname10) {
