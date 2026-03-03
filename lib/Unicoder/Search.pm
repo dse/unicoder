@@ -143,13 +143,50 @@ sub unicoder_search_db {
     my @negate_words;
     my @require_words;
 
+    my @query_word_info;
     foreach my $query_word_idx (0 .. $#query_words) {
+        my $query_word = $query_words[$query_word_idx];
+        my %hash = (
+            index => $query_word_idx,
+            query_word => $query_word,
+        );
         my $start_with;
         my $whole_word;
         my $negate_words;
         my $require_words;
-        my $query_word = $query_words[$query_word_idx];
-        print("$query_word\n");
+        while (1) {
+            if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
+                print("    negate $query_word\n");
+                $negate_words{$query_word} = 1;
+                push(@negate_words, $query_word);
+                $negate_words = 1;
+                $hash{negate_word} = 1;
+            } elsif ($query_word =~ s{^(?:start:|startwith:|\^)}{}) {
+                $start_with = 1;
+                $hash{start_with} = 1;
+            } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
+                $require_words{$query_word} = 1;
+                push(@require_words, $query_word);
+                $require_words = 1;
+                $hash{require_word} = 1;
+            } elsif ($query_word =~ s{^(?:whole:|wholeword:|=)}{}) {
+                $whole_word = 1;
+                $hash{whole_word} = 1;
+            } else {
+                last;
+            }
+        }
+        push(@query_word_info, \%hash);
+    }
+
+    foreach my $query_word_idx (0 .. $#query_words) {
+        my $query_word_info = $query_word_info[$query_word_idx];
+        my $start_with = $query_word_info->{start_with};
+        my $whole_word = $query_word_info->{whole_word};
+        my $negate_words = $query_word_info->{negate_word};
+        my $require_words = $query_word_info->{require_word};
+        my $query_word = $query_word_info->{query_word};
+
         while (1) {
             if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
                 print("    negate $query_word\n");

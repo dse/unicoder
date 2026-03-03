@@ -41,7 +41,7 @@ sub split_words {
     my ($name) = @_;
     return if !defined $name || $name !~ /[0-9a-z]/;
     $name = lc $name;
-    return grep { /\S/ } split(/[^0-9a-z]+/, $name);
+    return grep { /\S/ } split(/[^0-9a-z:]+/, $name);
 }
 
 sub get_charnames {
