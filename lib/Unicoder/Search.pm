@@ -143,49 +143,52 @@ sub unicoder_search_db {
     my @negate_words;
     my @require_words;
 
-    my @query_word_info;
+    my @search_terms;
     foreach my $query_word_idx (0 .. $#query_words) {
-        my $query_word = $query_words[$query_word_idx];
-        my %hash = (
-            index => $query_word_idx,
-            query_word => $query_word,
-        );
         my $start_with;
         my $whole_word;
-        my $negate_words;
-        my $require_words;
+        my $negate_word;
+        my $require_word;
+        my $query_word = $query_words[$query_word_idx];
         while (1) {
             if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
-                print("    negate $query_word\n");
-                $negate_words{$query_word} = 1;
-                push(@negate_words, $query_word);
-                $negate_words = 1;
-                $hash{negate_word} = 1;
+                $negate_word = 1;
             } elsif ($query_word =~ s{^(?:start:|startwith:|\^)}{}) {
                 $start_with = 1;
-                $hash{start_with} = 1;
             } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
-                $require_words{$query_word} = 1;
-                push(@require_words, $query_word);
-                $require_words = 1;
-                $hash{require_word} = 1;
+                $require_word = 1;
             } elsif ($query_word =~ s{^(?:whole:|wholeword:|=)}{}) {
                 $whole_word = 1;
-                $hash{whole_word} = 1;
             } else {
                 last;
             }
         }
-        push(@query_word_info, \%hash);
+
+        my %hash = (
+            index => $query_word_idx,
+            query_word => $query_word,
+        );
+        $hash{start_with}   = 1 if $start_with;
+        $hash{whole_word}   = 1 if $whole_word;
+        $hash{negate_word}  = 1 if $negate_word;
+        $hash{require_word} = 1 if $require_word;
+
+        $negate_words{$query_word}  = 1 if $negate_word;
+        $require_words{$query_word} = 1 if $require_word;
+
+        push(@negate_words,  $query_word) if $negate_word;
+        push(@require_words, $query_word) if $require_word;
+
+        push(@search_terms, \%hash);
     }
 
     foreach my $query_word_idx (0 .. $#query_words) {
-        my $query_word_info = $query_word_info[$query_word_idx];
-        my $start_with = $query_word_info->{start_with};
-        my $whole_word = $query_word_info->{whole_word};
-        my $negate_words = $query_word_info->{negate_word};
-        my $require_words = $query_word_info->{require_word};
-        my $query_word = $query_word_info->{query_word};
+        my $search_terms = $search_terms[$query_word_idx];
+        my $start_with = $search_terms->{start_with};
+        my $whole_word = $search_terms->{whole_word};
+        my $negate_words = $search_terms->{negate_word};
+        my $require_words = $search_terms->{require_word};
+        my $query_word = $search_terms->{query_word};
 
         while (1) {
             if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
