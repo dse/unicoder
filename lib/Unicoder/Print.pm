@@ -45,7 +45,7 @@ sub char_line_as_string {
     }
     if ($args{print_category}) {
         my $category = charprop($codepoint, "General Category");
-        $str .= sprintf("  %-24s", $category // "(none)");
+        $str .= sprintf("  %-22s", $category // "(none)");
     }
     if ($args{print_char}) {
         $str .= sprintf("  %-2s", print_char_as_string($codepoint));
