@@ -32,7 +32,7 @@ Getopt::Long::GetOptions(
 ) or die(":-(\n");
 
 sub usage { print(<<"EOF"); }
-charsearch [OPTION ...] [KEYWORD ...]
+charsearch [OPTION...] [KEYWORD...]
     -a, --all       Print all results.
     -c, --char      Display characters.
     -k, --category  Display Unicode general category names.
