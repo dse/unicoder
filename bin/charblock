@@ -9,6 +9,7 @@ use File::Basename qw(dirname);
 
 use lib dirname(__FILE__) . "/../lib";
 use Unicoder::AdobeGlyphNames qw(get_glyph_name);
+use Unicoder::Print qw(char_line_as_string print_char_as_string);
 
 our %CONTROL = (
     0x0000 => { abbr => ['NUL'] },
@@ -133,12 +134,15 @@ binmode(STDOUT, ':utf8');
 
 our $format;
 our $print_char;
+our $print_category;
+our $print_gc;
 our $allchar;
 our $startchar;
 our $json;
 our $unicode10;
 our $decimal;
 our $hexadecimal;
+our $octal;
 our $adobe;
 our $table;
 our $property;
@@ -147,12 +151,15 @@ Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
     'f|format=s' => \$format,
     'c|char|print-char' => \$print_char,
+    'k|category|print-category' => \$print_category,
+    'gc' => \$print_gc,
     'startchar' => \$startchar,
     'allchar' => \$allchar,
     'j|json' => \$json,
     'd|decimal' => \$decimal,
     'x|hexadecimal' => \$hexadecimal,
-    'a|adobe' => \$adobe,
+    'o|octal' => \$octal,
+    'a|A|adobe' => \$adobe,
     't|table' => \$table,
     'p|property=s' => \$property,
     'unicode10' => \$unicode10,
@@ -163,7 +170,8 @@ sub usage { print(<<"EOF"); }
 charblock [<option> ...] <block-name|codepoint>
     -f, --format=<format>       %u => U+xxx  %n => raw name  %N => name
                                 %d => decimal  %c => character
-        --char, --print-char    display the character
+        --char, --print-char        display the character
+        --gc, --[print-]category    display the 2-character gen'l category code
         --startchar             STARTCHAR
         --allchar               STARTCHAR ... ENDCHAR
     -a, --adobe                 list Adobe glyph names.
@@ -225,18 +233,9 @@ if ($table) {
 } else {
     for (my $codepoint = $block->[0][0]; $codepoint <= $block->[0][1]; $codepoint += 1) {
         my $charinfo = charinfo($codepoint);
-        next if !defined $charinfo;
         my $charname = $charinfo->{name};
-        if (!defined $charname || $charname eq '<control>') {
-            my $unicode10 = $charinfo->{unicode10};
-            if (defined $unicode10) {
-                $charname .= ' -- ' . $unicode10;
-            } else {
-                $charname //= '(undef)';
-            }
-        }
-        if ($unicode10 && defined $charinfo->{unicode10} && $charinfo->{unicode10} =~ /\S/) {
-            $charname .= sprintf(" [%s]", $charinfo->{unicode10});
+        for ($charname) {
+            $_ = undef if defined $_ && !/\S/;
         }
         if ($json) {
             $encoder //= JSON::XS->new()->ascii(1)->canonical(1)->pretty(1);
@@ -249,7 +248,7 @@ if ($table) {
                 n => $charinfo->{name},
                 N => $charname,
                 d => $codepoint,
-                c => displayed_char($codepoint),
+                c => print_char_as_string($codepoint),
             );
             print(stringf($format, %char));
             print("\n");
@@ -272,22 +271,13 @@ if ($table) {
             printf("|       |\n");
             printf("ENDCHAR\n");
         } else {
-            if ($hexadecimal || (!$decimal && !$hexadecimal)) {
-                printf("%-8s  ", u($codepoint));
-            }
-            if ($decimal) {
-                printf("%8d  ", $codepoint);
-            }
-            if ($print_char) {
-                printf("%1s  ", displayed_char($codepoint));
-            }
-            if ($adobe) {
-                printf("%-20s  ", get_glyph_name($codepoint, 1) // "");
-            }
-            if (defined $property) {
-                printf("%-32s  ", charprop($codepoint, $property));
-            }
-            print("$charname\n");
+            printf("%s\n", char_line_as_string($codepoint,
+                                               octal => $octal,
+                                               decimal => $decimal,
+                                               adobe => $adobe,
+                                               print_char => $print_char,
+                                               print_gc => $print_gc,
+                                               print_category => $print_category));
         }
     }
 }

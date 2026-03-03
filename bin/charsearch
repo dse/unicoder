@@ -5,15 +5,30 @@ use FindBin qw($Bin);
 use lib "$Bin/../lib";
 use Unicode::UCD qw(charinfo);
 use Unicoder::Search qw(unicoder_load_db unicoder_search_db);
-use Unicoder::Utils qw(u get_charnames print_char);
+use Unicoder::Print qw(char_line_as_string);
 binmode(STDOUT, ":utf8");
 
 our $all = 0;
+our $print_char = 0;
+our $print_category = 0;
+our $print_gc = 0;
+our $decimal;
+our $hexadecimal;
+our $octal;
+our $adobe;
 
 use Getopt::Long;
 Getopt::Long::Configure(qw(gnu_getopt));
 Getopt::Long::GetOptions(
-    'all' => \$all,
+    'a|all' => \$all,
+    'k|category|print-category' => \$print_category,
+    'gc' => \$print_gc,
+    'c|char|print-char' => \$print_char,
+    'd|decimal' => \$decimal,
+    'x|hexadecimal' => \$hexadecimal,
+    'o|octal' => \$octal,
+    'A|adobe' => \$adobe,
+    # 'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
 unicoder_load_db();
@@ -26,13 +41,13 @@ if (!$all && $result_count > 20) {
 
 foreach my $result (@results) {
     my ($codepoint, $score) = ($result->{codepoint}, $result->{score});
-    my @charnames = get_charnames($codepoint);
-    my $charinfo = charinfo($codepoint);
-    printf("%-8s  %s   %-2s  %s\n",
-           u($codepoint),
-           print_char($codepoint),
-           (defined $charinfo) ? $charinfo->{category} : "",
-           join(" -- ", @charnames));
+    printf("%s\n", char_line_as_string($codepoint,
+                                       print_char => $print_char,
+                                       print_gc => $print_gc,
+                                       print_category => $print_category,
+                                       octal => $octal,
+                                       decimal => $decimal,
+                                       adobe => $adobe));
 }
 if ($result_count > 20 && !$all) {
     printf("# Use --all to list all %d results.\n", $result_count);
