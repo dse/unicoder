@@ -4,7 +4,7 @@ use strict;
 
 use base "Exporter";
 our @EXPORT = qw();
-our @EXPORT_OK = qw(%GLYPH_NAMES get_glyph_name);
+our @EXPORT_OK = qw(%GLYPH_NAMES get_glyph_name get_glyph_name_by_codepoint);
 our %EXPORT_TAGS = (all => [@EXPORT_OK]);
 
 # AGLFN 1.7 (Nov 06 2008) -- https://github.com/adobe-type-tools/agl-aglfn
@@ -614,7 +614,17 @@ sub get_glyph_name {
     if (length($codepoint) == 1 && $codepoint !~ /^[0-9]$/) {
         $codepoint = ord($codepoint);
     }
-    return $GLYPH_NAMES{$codepoint} // ($strict ? undef : sprintf("char%d", $codepoint));
+    return $GLYPH_NAMES{$codepoint} // ($strict ? undef : get_codepoint_glyph_name($codepoint));
+}
+
+sub get_glyph_name_by_codepoint {
+    my ($codepoint, $strict) = @_;
+    return $GLYPH_NAMES{$codepoint} // ($strict ? undef : get_codepoint_glyph_name($codepoint));
+}
+
+sub get_codepoint_glyph_name {
+    my ($codepoint) = @_;
+    return sprintf("uni%04X", $codepoint);
 }
 
 1;
