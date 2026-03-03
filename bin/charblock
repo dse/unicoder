@@ -167,17 +167,16 @@ Getopt::Long::GetOptions(
 ) or die(":-(\n");
 
 sub usage { print(<<"EOF"); }
-charblock [<option> ...] <block-name|codepoint>
-    -f, --format=<format>       %u => U+xxx  %n => raw name  %N => name
-                                %d => decimal  %c => character
-        --char, --print-char        display the character
-        --gc, --[print-]category    display the 2-character gen'l category code
-        --startchar             STARTCHAR
-        --allchar               STARTCHAR ... ENDCHAR
-    -a, --adobe                 list Adobe glyph names.
-    -j, --json                  output JOSN
-        --unicode10             add Unicode 1.0 character names
-    -d, --decimal
+charblock [OPTION...] [BLOCKNAME|CODEPOINT]
+    -c, --char        Display characters.
+    -k, --category    Display Unicode general category names.
+        --gc          Display Unicode genearl category abbreviations.
+    -d, --decimal     Print decimal codes.
+    -o, --octal       Print octal codes.
+    -A, --adobe       Print Adobe glyph names.
+        --help        Display this message.
+codepoints:
+    9 0x1f4a9 U+1F4A9
 EOF
 
 die("not enough arguments\n") if !scalar @ARGV;

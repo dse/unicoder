@@ -153,7 +153,7 @@ sub unicoder_search_db {
         while (1) {
             if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
                 $negate_word = 1;
-            } elsif ($query_word =~ s{^(?:start:|startwith:|\^)}{}) {
+            } elsif ($query_word =~ s{^(?:start:|starts?with:|\^)}{}) {
                 $start_with = 1;
             } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
                 $require_word = 1;
@@ -184,39 +184,30 @@ sub unicoder_search_db {
 
     foreach my $query_word_idx (0 .. $#query_words) {
         my $search_terms = $search_terms[$query_word_idx];
-        my $start_with = $search_terms->{start_with};
-        my $whole_word = $search_terms->{whole_word};
-        my $negate_words = $search_terms->{negate_word};
-        my $require_words = $search_terms->{require_word};
-        my $query_word = $search_terms->{query_word};
+        my $start_with   = $search_terms->{start_with};
+        my $whole_word   = $search_terms->{whole_word};
+        my $negate_word  = $search_terms->{negate_word};
+        my $require_word = $search_terms->{require_word};
+        my $query_word   = $search_terms->{query_word};
 
-        while (1) {
-            if ($query_word =~ s{^(?:negate:|not:|-)}{}) {
-                print("    negate $query_word\n");
-                $negate_words{$query_word} = 1;
-                push(@negate_words, $query_word);
-                $negate_words = 1;
-            } elsif ($query_word =~ s{^(?:start:|startwith:|\^)}{}) {
-                $start_with = 1;
-            } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
-                $require_words{$query_word} = 1;
-                push(@require_words, $query_word);
-                $require_words = 1;
-            } elsif ($query_word =~ s{^(?:whole:|wholeword:|=)}{}) {
-                $whole_word = 1;
-            } else {
-                last;
-            }
+        my $db_entries = $DB->{$query_word};
+        if (!defined $db_entries || !scalar @$db_entries) {
+            next;
         }
-        my @db_entries = @{$DB->{$query_word}};
-        if (!scalar @db_entries) {
-            continue;
-        }
-        $occurrence_count_in_db{$query_word} = scalar @db_entries;
-        foreach my $db_entry (@db_entries) {
+
+        # for scoring
+        $occurrence_count_in_db{$query_word} = scalar @$db_entries;
+
+        foreach my $db_entry (@$db_entries) {
             my ($codepoint, $word_idx, $word_count, $word_len, $substr_idx, $substr_len, $which_charname) = @$db_entry;
-            next if $start_with && $substr_idx;
-            next if $whole_word && $substr_len < $word_len;
+
+            # Filter out ^start_with and =whole_word terms.
+            if ($start_with && $substr_idx) {
+                next;
+            }
+            if ($whole_word && $substr_len < $word_len) {
+                next;
+            }
             my $raw_result = {
                 codepoint      => $codepoint,
                 word_idx       => $word_idx,
@@ -227,8 +218,8 @@ sub unicoder_search_db {
                 which_charname => $which_charname,
                 query_word     => $query_word,
                 query_word_idx => $query_word_idx,
-                negate_word    => $negate_words,
-                require_word   => $require_words,
+                negate_word    => $negate_word,
+                require_word   => $require_word,
                 start_with     => $start_with,
                 whole_word     => $whole_word,
             };
@@ -236,14 +227,16 @@ sub unicoder_search_db {
         }
     }
 
+    # Filter out -negate and +require terms.
     foreach my $codepoint (keys %raw_results_by_codepoint) {
         my @results = @{$raw_results_by_codepoint{$codepoint}};
-        if (grep { $_->{negate_words} } @results) {
+        my @negate = grep { $_->{negate_word} } @results;
+        if (scalar @negate) {
             delete $raw_results_by_codepoint{$codepoint};
         }
         foreach my $require_word (@require_words) {
-            my @grep = grep { $_->{require_word} && $_->{query_word} eq $require_word } @results;
-            if (!scalar @grep) {
+            my @require = grep { $_->{require_word} && $_->{query_word} eq $require_word } @results;
+            if (!scalar @require) {
                 delete $raw_results_by_codepoint{$codepoint};
             }
         }
@@ -260,14 +253,11 @@ sub unicoder_search_db {
             next if !scalar @raw_results;
             my $word_matched_count = scalar uniq sort map { $_->{word_idx} } @raw_results;
             foreach my $raw_result (@raw_results) {
-                my $word_idx = $raw_result->{word_idx};
                 my $word_count = $raw_result->{word_count};
                 my $word_len = $raw_result->{word_len};
                 my $substr_idx = $raw_result->{substr_idx};
                 my $substr_len = $raw_result->{substr_len};
-                my $which_charname = $raw_result->{which_charname};
                 my $query_word = $raw_result->{query_word};
-                my $query_word_idx = $raw_result->{query_word_idx};
                 my $occurrence_count = $occurrence_count_in_db{$query_word};
                 $raw_result->{word_matched_count} = $word_matched_count;
                 $raw_result->{occurrence_count} = $occurrence_count;
@@ -284,14 +274,14 @@ sub unicoder_search_db {
         }
         $scores_by_codepoint{$codepoint} = $highest_score;
     }
+
+    # Sort character results.
     my @codepoints = sort {
         round(1000 * ($scores_by_codepoint{$b} - $scores_by_codepoint{$a})) || ($a <=> $b)
     } keys %scores_by_codepoint;
-    if ($more_info) {
-        return map { { codepoint => $_, score => $scores_by_codepoint{$_},
-                         raw_results => $raw_results_by_codepoint{$_} } } @codepoints;
-    }
-    return @codepoints;
+
+    # Include scoring data.
+    return map { { codepoint => $_, score => $scores_by_codepoint{$_} } } @codepoints;
 }
 
 1;

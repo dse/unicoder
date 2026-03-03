@@ -31,9 +31,24 @@ Getopt::Long::GetOptions(
     # 'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
+sub usage { print(<<"EOF"); }
+charsearch [OPTION ...] [KEYWORD ...]
+    -a, --all        Print all results.
+    -c, --char        Display characters.
+    -k, --category    Display Unicode general category names.
+        --gc          Display Unicode genearl category abbreviations.
+    -d, --decimal     Print decimal codes.
+    -o, --octal       Print octal codes.
+    -A, --adobe       Print Adobe glyph names.
+advanced keywords:
+    require:devangari not:leader whole:leader startswith:lead
+operators can be combined:
+    require:whole:leader
+EOF
+
 unicoder_load_db();
 
-my @results = unicoder_search_db(\@ARGV, 1);
+my @results = unicoder_search_db(\@ARGV);
 my $result_count = scalar @results;
 if (!$all && $result_count > 20) {
     splice(@results, 20);
