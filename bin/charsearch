@@ -28,7 +28,7 @@ Getopt::Long::GetOptions(
     'x|hexadecimal' => \$hexadecimal,
     'o|octal' => \$octal,
     'A|adobe' => \$adobe,
-    # 'help|?' => sub { usage(); exit(0); },
+    'help|?' => sub { usage(); exit(0); },
 ) or die(":-(\n");
 
 sub usage { print(<<"EOF"); }
