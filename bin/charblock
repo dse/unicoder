@@ -168,13 +168,13 @@ Getopt::Long::GetOptions(
 
 sub usage { print(<<"EOF"); }
 charblock [OPTION...] [BLOCKNAME|CODEPOINT]
-    -c, --char        Display characters.
-    -k, --category    Display Unicode general category names.
-        --gc          Display Unicode genearl category abbreviations.
-    -d, --decimal     Print decimal codes.
-    -o, --octal       Print octal codes.
-    -A, --adobe       Print Adobe glyph names.
-        --help        Display this message.
+    -c, --char      Display characters.
+    -k, --category  Display Unicode general category names.
+        --gc        Display Unicode genearl category abbreviations.
+    -d, --decimal   Print decimal codes.
+    -o, --octal     Print octal codes.
+    -A, --adobe     Print Adobe glyph names.
+        --help      Display this message.
 codepoints:
     9 0x1f4a9 U+1F4A9
 EOF

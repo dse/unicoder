@@ -33,17 +33,17 @@ Getopt::Long::GetOptions(
 
 sub usage { print(<<"EOF"); }
 charsearch [OPTION ...] [KEYWORD ...]
-    -a, --all        Print all results.
-    -c, --char        Display characters.
-    -k, --category    Display Unicode general category names.
-        --gc          Display Unicode genearl category abbreviations.
-    -d, --decimal     Print decimal codes.
-    -o, --octal       Print octal codes.
-    -A, --adobe       Print Adobe glyph names.
-advanced keywords:
-    require:devangari not:leader whole:leader startswith:lead
+    -a, --all       Print all results.
+    -c, --char      Display characters.
+    -k, --category  Display Unicode general category names.
+        --gc        Display Unicode genearl category abbreviations.
+    -d, --decimal   Print decimal codes.
+    -o, --octal     Print octal codes.
+    -A, --adobe     Print Adobe glyph names.
+advanced keyword operators:
+    require:devangari not:leader wholeword:leader startswith:lead
 operators can be combined:
-    require:whole:leader
+    require:wholeword:leader
 EOF
 
 unicoder_load_db();
