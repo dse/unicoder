@@ -4,6 +4,10 @@ use strict;
 use Unicode::UCD qw(charinfo charprop);
 use POSIX qw(ceil);
 
+use File::Basename qw(dirname);
+use lib dirname(__FILE__) . "/..";
+use Unicoder::AdobeGlyphNames qw(get_glyph_name_by_codepoint);
+
 use base "Exporter";
 our @EXPORT = ();
 our @EXPORT_OK = qw(char_line_as_string
@@ -35,12 +39,19 @@ sub char_line_as_string {
         my $o = sprintf("%#o", $codepoint);
         $str .= sprintf("  %*s", $octal_columns, $o);
     }
-    if ($args{print_category}) {
+    if ($args{print_gc}) {
         my $category = defined $charinfo ? $charinfo->{category} : undef;
-        $str .= sprintf("  %-2s", $category);
+        $str .= sprintf("  %-2s", $category // "Cn");
+    }
+    if ($args{print_category}) {
+        my $category = charprop($codepoint, "General Category");
+        $str .= sprintf("  %-24s", $category // "(none)");
     }
     if ($args{print_char}) {
         $str .= sprintf("  %-2s", print_char_as_string($codepoint));
+    }
+    if ($args{adobe}) {
+        $str .= sprintf("  %-24s", get_glyph_name_by_codepoint($codepoint));
     }
 
     if (defined $charname && defined $charname10) {
@@ -64,6 +75,16 @@ my %NON_PRINTING = (
     "Format" => 1,              # e.g., U+00AD SOFT HYPHEN
     "Private_Use" => 1,         # e.g., U+102345
     "Unassigned" => 1,          # e.g., U+34567
+
+    "Cs" => 1,                  # Surrogate
+    "Cf" => 1,                  # Format
+    "Co" => 1,                  # Private Use
+    "Cc" => 1,                  # Control
+    "Cn" => 1,                  # Unassigned, or Reserved
+    "Zs" => 1,                  # Space Separator
+    "Zl" => 1,                  # Line Separator
+    "Zp" => 1,                  # Paragraph Separator
+
     # "Other_Symbol" => 1,        # e.g., U+FFFD
 );
 
@@ -75,8 +96,9 @@ sub print_char_as_string {
     if ($codepoint < 0 || $codepoint >= 0x10ffff) {
         return "";
     }
-    my $general_category = charprop($codepoint, "General Category");
-    if ($NON_PRINTING{$general_category}) {
+    my $charinfo = charinfo($codepoint);
+    my $gc = defined $charinfo ? $charinfo->{category} : "Cn";
+    if ($NON_PRINTING{$gc}) {
         return "";
     }
     return chr($codepoint);
