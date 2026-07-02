@@ -155,7 +155,7 @@ sub unicoder_search_db {
                 $negate_word = 1;
             } elsif ($query_word =~ s{^(?:start:|starts?with:)}{}) {
                 $start_with = 1;
-            } elsif ($query_word =~ s{^(?:require:)}{}) {
+            } elsif ($query_word =~ s{^(?:require:|\+)}{}) {
                 $require_word = 1;
             } elsif ($query_word =~ s{^(?:word:|whole:|wholeword:)}{}) {
                 $whole_word = 1;

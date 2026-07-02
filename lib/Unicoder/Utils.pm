@@ -2,6 +2,7 @@ package Unicoder::Utils;
 use warnings;
 use strict;
 use Unicode::UCD qw(charinfo charblocks);
+use Data::Dumper qw();
 
 use base "Exporter";
 our @EXPORT = qw();
@@ -11,6 +12,7 @@ our @EXPORT_OK = qw(split_words
                     get_charnames
                     print_char
                     parse_codepoint
+                    dumper
                     u);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
@@ -41,7 +43,7 @@ sub split_words {
     my ($name) = @_;
     return if !defined $name || $name !~ /[0-9a-z]/;
     $name = lc $name;
-    return grep { /\S/ } split(/[^0-9a-z:]+/, $name);
+    return grep { /\S/ } split(" ", $name);
 }
 
 sub get_charnames {
@@ -102,5 +104,12 @@ sub parse_codepoint {
     return;
 }
 
+sub dumper {
+    local $Data::Dumper::Indent = 0;
+    local $Data::Dumper::Terse = 1;
+    local $Data::Dumper::Useqq = 1;
+    local $Data::Dumper::Sortkeys = 1;
+    return Data::Dumper::Dumper(@_);
+}
 
 1;
