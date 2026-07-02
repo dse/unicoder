@@ -42,8 +42,10 @@ charsearch [OPTION...] [KEYWORD...]
     -A, --adobe     Print Adobe glyph names.
 advanced keyword operators:
     require:devangari not:leader wholeword:leader startswith:lead
+    +devangari        \\!leader   =leader          \\^lead
 operators can be combined:
     require:wholeword:leader
+    +=leader
 EOF
 
 unicoder_load_db();
